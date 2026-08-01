@@ -20,13 +20,21 @@ export function AlternativeSelector({ options, selected, correctValue, onSelect,
         const isSelected = option === selected;
         let bg: string = colors.grayLight;
         let textColor: string = colors.textPrimary;
+        let borderColor: string | undefined;
 
         if (mode === 'review' && isSelected) {
           const isCorrect = option === correctValue;
-          bg = isCorrect ? colors.success : colors.danger;
-          textColor = colors.white;
+          bg = isCorrect ? colors.success : colors.yellow;
+          textColor = isCorrect ? colors.white : colors.textPrimary;
         } else if (mode === 'review' && option === correctValue) {
-          bg = '#dceee0';
+          if (selected === undefined) {
+            // Unanswered/unread — outline the correct answer in the error color instead of the
+            // usual light-green hint, so it reads as "not detected" rather than just "correct".
+            bg = colors.white;
+            borderColor = colors.yellow;
+          } else {
+            bg = '#dceee0';
+          }
         } else if (isSelected) {
           bg = colors.dark;
           textColor = colors.white;
@@ -37,7 +45,11 @@ export function AlternativeSelector({ options, selected, correctValue, onSelect,
             key={option}
             disabled={mode === 'review'}
             onPress={() => onSelect(option)}
-            style={[styles.pill, { backgroundColor: bg }]}
+            style={[
+              styles.pill,
+              { backgroundColor: bg },
+              borderColor ? { borderWidth: 2, borderColor } : null,
+            ]}
           >
             <Text variant="caption" weight="medium" color={textColor}>
               {option}
