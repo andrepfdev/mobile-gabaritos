@@ -11,7 +11,14 @@ import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout } from '../../../../lib/gabarito/layout';
-import { AMBIGUOUS_RATIO_THRESHOLD, analyzeGabarito, ScanAnswers, scoreAgainstAnswerKey, unansweredRatio } from '../../../../lib/gabarito/scan';
+import {
+  AMBIGUOUS_RATIO_THRESHOLD,
+  analyzeGabarito,
+  ScanAnswers,
+  ScanDebugInfo,
+  scoreAgainstAnswerKey,
+  unansweredRatio,
+} from '../../../../lib/gabarito/scan';
 
 export default function ScanResult() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -25,6 +32,7 @@ export default function ScanResult() {
 
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
   const [answers, setAnswers] = useState<ScanAnswers>({});
+  const [debug, setDebug] = useState<ScanDebugInfo | null>(null);
 
   useEffect(() => {
     if (!exam || !answerKey || !photoUri) return;
@@ -34,7 +42,8 @@ export default function ScanResult() {
     analyzeGabarito(photoUri, layout)
       .then((result) => {
         if (cancelled) return;
-        setAnswers(result);
+        setAnswers(result.answers);
+        setDebug(result.debug);
         setStatus('done');
       })
       .catch(() => {
@@ -125,6 +134,30 @@ export default function ScanResult() {
 
         <PillButton title="Escanear outra" variant="outline" onPress={onScanAgain} />
         <PillButton title="Concluir" variant="accent" onPress={onFinish} />
+
+        {/* TEMPORARY diagnostic block — remove once the pixel-reading pipeline is confirmed
+            working end-to-end on a real device. Shows raw luminance readings (0=black..255=white)
+            so we can tell apart "sampling the wrong spot" from "Skia not reading pixels right". */}
+        {debug ? (
+          <Card variant="grayLight" style={styles.debugCard}>
+            <Text variant="body" weight="bold">
+              Diagnóstico (temporário)
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · janela de amostra: ${debug.sampleSize}px`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`Cantos: TL(${Math.round(debug.corners.topLeft.x)},${Math.round(debug.corners.topLeft.y)}) TR(${Math.round(debug.corners.topRight.x)},${Math.round(debug.corners.topRight.y)}) BL(${Math.round(debug.corners.bottomLeft.x)},${Math.round(debug.corners.bottomLeft.y)}) BR(${Math.round(debug.corners.bottomRight.x)},${Math.round(debug.corners.bottomRight.y)})`}
+            </Text>
+            {debug.rows.map((row) => (
+              <Text key={row.question} variant="caption" color={colors.textMuted} style={styles.debugLine}>
+                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}`).join(' ')} → ${
+                  row.isMarked ? `marcado ${row.darkestOption}` : 'sem marca'
+                } (min=${row.darkestValue} 2º=${row.secondDarkestValue})`}
+              </Text>
+            ))}
+          </Card>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -139,6 +172,13 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: 140,
     gap: spacing.sm,
+  },
+  debugCard: {
+    marginTop: spacing.lg,
+  },
+  debugLine: {
+    marginTop: spacing.xs,
+    fontFamily: 'monospace',
   },
   centered: {
     flex: 1,
