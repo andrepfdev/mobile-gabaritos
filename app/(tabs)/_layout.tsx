@@ -7,7 +7,7 @@ import { useSubscriptionStatus } from '../../hooks/useSubscriptionStatus';
 
 const TAB_ITEMS: TabItem[] = [
   { key: 'home', label: 'Início', icon: 'home', route: '/home' },
-  { key: 'exams', label: 'Provas', icon: 'briefcase', route: '/exams' },
+  { key: 'exams', label: 'Provas', icon: 'clipboard', route: '/exams' },
   { key: 'statistics', label: 'Estatísticas', icon: 'stats-chart', route: '/statistics' },
   { key: 'profile', label: 'Perfil', icon: 'person', route: '/profile' },
 ];

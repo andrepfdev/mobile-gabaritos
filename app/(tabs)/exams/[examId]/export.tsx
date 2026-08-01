@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { Alert, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
 import ViewShot from 'react-native-view-shot';
@@ -10,6 +10,12 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { SHEET_ASPECT_RATIO } from '../../../../lib/gabarito/layout';
+
+// Rendered well above screen resolution so the exported image stays sharp when printed at full
+// A4 size — the preview below shows it scaled down to fit the screen, but capture() always
+// grabs the full CAPTURE_WIDTH-resolution bitmap regardless of that visual scale.
+const CAPTURE_WIDTH = 1600;
 
 export default function ExportGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -17,6 +23,12 @@ export default function ExportGabarito() {
   const exam = exams.find((e) => e.id === examId);
   const viewShotRef = useRef<ViewShot>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
+  const { width: screenWidth } = useWindowDimensions();
+
+  const previewWidth = screenWidth - spacing.lg * 2;
+  const captureHeight = CAPTURE_WIDTH / SHEET_ASPECT_RATIO;
+  const previewScale = previewWidth / CAPTURE_WIDTH;
+  const previewHeight = captureHeight * previewScale;
 
   if (!exam) {
     return (
@@ -80,12 +92,20 @@ export default function ExportGabarito() {
           gabarito preencher a folha corretamente.
         </Text>
 
-        <ScrollView horizontal contentContainerStyle={styles.previewWrap}>
-          <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
-            {/* Rendered well above screen resolution so the exported image stays sharp when printed at full A4 size. */}
-            <GabaritoSheet exam={exam} width={1600} />
-          </ViewShot>
-        </ScrollView>
+        <View style={[styles.previewWrap, { width: previewWidth, height: previewHeight }]}>
+          <View
+            style={{
+              width: CAPTURE_WIDTH,
+              height: captureHeight,
+              transform: [{ scale: previewScale }],
+              transformOrigin: 'top left',
+            }}
+          >
+            <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
+              <GabaritoSheet exam={exam} width={CAPTURE_WIDTH} />
+            </ViewShot>
+          </View>
+        </View>
 
         <PillButton title="Baixar imagem" variant="accent" onPress={onSave} disabled={busy !== null} />
         <PillButton title="Compartilhar" variant="outline" onPress={onShare} disabled={busy !== null} />
@@ -114,6 +134,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   previewWrap: {
+    alignSelf: 'center',
     marginBottom: spacing.lg,
+    overflow: 'hidden',
+    borderRadius: 12,
   },
 });
