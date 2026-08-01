@@ -36,11 +36,6 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
 
   return (
     <View style={[styles.sheet, { width, height }]}>
-      <CornerMark layout={layout} width={width} height={height} corner="topLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="topRight" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomRight" />
-
       {/* minHeight (not height) + top alignment: a long title can wrap to 2 lines and grow the
           header without overlapping the divider/first row — the divider itself is a separate
           absolutely-positioned line pinned at the reserved header height, not this View's border. */}
@@ -125,6 +120,14 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
           ))}
         </React.Fragment>
       ))}
+
+      {/* Rendered last (on top of the row stripes) — the bottom corner marks sit close enough to
+          the last row that an even-numbered final row's stripe could otherwise paint over part of
+          them, leaving a clipped-looking mark that throws off corner detection when scanning. */}
+      <CornerMark layout={layout} width={width} height={height} corner="topLeft" />
+      <CornerMark layout={layout} width={width} height={height} corner="topRight" />
+      <CornerMark layout={layout} width={width} height={height} corner="bottomLeft" />
+      <CornerMark layout={layout} width={width} height={height} corner="bottomRight" />
     </View>
   );
 }

@@ -12,7 +12,9 @@ const CORNER_MARK_SIZE_PCT = 0.03;
 const HEADER_HEIGHT_W = 0.115;
 const GRID_TOP_GAP_W = 0.02;
 const ROW_HEIGHT_W = 0.082;
-const BOTTOM_MARGIN_W = CORNER_INSET_PCT;
+// Clear gap between the last row's stripe and the bottom corner marks (bigger than the corner
+// mark's own half-size) so the two never touch/overlap regardless of rounding.
+const BOTTOM_MARGIN_W = CORNER_INSET_PCT + CORNER_MARK_SIZE_PCT;
 const COLUMN_GAP_W = 0.04;
 // Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
 const LABEL_WIDTH_RATIO = 0.09;
