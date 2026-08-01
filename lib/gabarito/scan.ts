@@ -1,8 +1,15 @@
 import { AlphaType, ColorType, Skia, SkImage } from '@shopify/react-native-skia';
 import { GabaritoLayout } from './layout';
 
-const MARK_THRESHOLD = 130; // 0-255 gray level; below this is considered "filled in" (darkest-15% metric, not mean)
-const MIN_SEPARATION = 25; // required gap to the second-darkest bubble to avoid ambiguous double-marks
+const MARK_THRESHOLD = 200; // 0-255 gray level; absolute safety ceiling, the darkest option must still be reasonably dark
+const MIN_SEPARATION = 20; // required absolute gap to the second-darkest bubble to avoid ambiguous double-marks
+// The darkest option must be at least this fraction darker than the row's own *lightest* reading
+// (not a fixed absolute value) before we call it marked. A faint print or a shadowed photo
+// compresses every reading in a row into a narrow, uniformly darker band — comparing against a
+// fixed threshold is unstable there (small per-shot noise flips which option "wins"), but
+// comparing each option against what that same row's blank paper actually looked like in this
+// photo adapts automatically to the real contrast available, whatever it is.
+const RELATIVE_DROP_RATIO = 0.35;
 const DARKEST_FRACTION = 0.15; // fraction of the sample window's darkest pixels averaged per bubble
 const CORNER_MARK_THRESHOLD = 100; // corner squares are printed solid near-black, stricter than bubble marks
 const MIN_CORNER_DARK_PIXELS = 10;
@@ -24,6 +31,7 @@ export type ScanDebugInfo = {
     darkestOption?: string;
     darkestValue: number;
     secondDarkestValue: number;
+    lightestValue: number;
     isMarked: boolean;
   }[];
 };
@@ -98,26 +106,30 @@ function centroidOfDarkPixels(
  * mark even if the rough pass was somewhat off.
  */
 function findCornerMark(image: SkImage, region: { x: number; y: number; width: number; height: number }): PixelPoint | null {
-  const rough = centroidOfDarkPixels(image, region, MIN_CORNER_DARK_PIXELS);
-  if (!rough) return null;
+  let current = centroidOfDarkPixels(image, region, MIN_CORNER_DARK_PIXELS);
+  if (!current) return null;
 
-  const refineSize = Math.max(region.width, region.height) * 0.15;
-  const refined = centroidOfDarkPixels(
-    image,
-    {
-      x: rough.point.x - refineSize / 2,
-      y: rough.point.y - refineSize / 2,
-      width: refineSize,
-      height: refineSize,
-    },
-    MIN_CORNER_DARK_PIXELS,
-  );
+  // Two refinement passes, each in a tighter window centered on the previous result — each pass
+  // further reduces the chance that background/shadow bigger than the mark itself is still
+  // pulling the centroid away from the true small square.
+  let windowSize = Math.max(region.width, region.height);
+  for (let pass = 0; pass < 2; pass++) {
+    windowSize *= 0.15;
+    const refined = centroidOfDarkPixels(
+      image,
+      {
+        x: current.point.x - windowSize / 2,
+        y: current.point.y - windowSize / 2,
+        width: windowSize,
+        height: windowSize,
+      },
+      MIN_CORNER_DARK_PIXELS,
+    );
+    if (!refined) break;
+    current = refined;
+  }
 
-  return (refined ?? rough).point;
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
+  return current.point;
 }
 
 /** Rescales `value` from the [min, max] range onto 0..1. */
@@ -125,21 +137,59 @@ function normalize(value: number, min: number, max: number): number {
   return (value - min) / (max - min);
 }
 
-/** Maps a layout percentage (0..1, 0..1) to an actual photo pixel using the 4 detected corners. */
-function toPixel(corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }, u: number, v: number): PixelPoint {
-  const topX = lerp(corners.topLeft.x, corners.topRight.x, u);
-  const topY = lerp(corners.topLeft.y, corners.topRight.y, u);
-  const bottomX = lerp(corners.bottomLeft.x, corners.bottomRight.x, u);
-  const bottomY = lerp(corners.bottomLeft.y, corners.bottomRight.y, u);
-  return { x: lerp(topX, bottomX, v), y: lerp(topY, bottomY, v) };
+type Homography = { a: number; b: number; c: number; d: number; e: number; f: number; g: number; h: number };
+
+/**
+ * Computes the projective transform (homography) mapping the unit square — (0,0)=top-left,
+ * (1,0)=top-right, (1,1)=bottom-right, (0,1)=bottom-left — onto the 4 detected corner pixels.
+ * Unlike plain bilinear interpolation (which only blends linearly and drifts further off the
+ * further a point is from the corners), this accounts for the actual perspective/rotation of the
+ * photographed sheet — the classic "unit square to quad" mapping used by graphics engines for
+ * poly-to-poly transforms. Computed once per photo, then reused for every bubble.
+ */
+function computeHomography(corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }): Homography {
+  const x0 = corners.topLeft.x, y0 = corners.topLeft.y;
+  const x1 = corners.topRight.x, y1 = corners.topRight.y;
+  const x2 = corners.bottomRight.x, y2 = corners.bottomRight.y;
+  const x3 = corners.bottomLeft.x, y3 = corners.bottomLeft.y;
+
+  const dx1 = x1 - x2, dy1 = y1 - y2;
+  const dx2 = x3 - x2, dy2 = y3 - y2;
+  const sx = x0 - x1 + x2 - x3;
+  const sy = y0 - y1 + y2 - y3;
+
+  const denom = dx1 * dy2 - dy1 * dx2;
+  const g = denom !== 0 ? (sx * dy2 - sy * dx2) / denom : 0;
+  const h = denom !== 0 ? (dx1 * sy - dy1 * sx) / denom : 0;
+
+  return {
+    a: x1 - x0 + g * x1,
+    b: x3 - x0 + h * x3,
+    c: x0,
+    d: y1 - y0 + g * y1,
+    e: y3 - y0 + h * y3,
+    f: y0,
+    g,
+    h,
+  };
+}
+
+/** Maps a layout percentage (0..1, 0..1) to an actual photo pixel through the sheet's homography. */
+function toPixel(homography: Homography, u: number, v: number): PixelPoint {
+  const w = homography.g * u + homography.h * v + 1;
+  return {
+    x: (homography.a * u + homography.b * v + homography.c) / w,
+    y: (homography.d * u + homography.e * v + homography.f) / w,
+  };
 }
 
 /**
- * Decodes a captured gabarito photo once, locates its 4 printed corner marks, then for every
- * bubble in `layout` samples a small grayscale window at its position (mapped through the
- * detected corners, not raw photo percentages) to find the darkest (filled-in) option per
- * question. This tolerates the sheet being framed anywhere/any scale within the photo and mild
- * rotation, without needing a full perspective/homography correction.
+ * Decodes a captured gabarito photo once, locates its 4 printed corner marks, computes the
+ * perspective transform (homography) from those corners, then for every bubble in `layout`
+ * samples a small grayscale window at its true photographed position (mapped through that
+ * homography, not raw photo percentages) to find the darkest (filled-in) option per question.
+ * This tolerates the sheet being framed anywhere/any scale/rotation/perspective tilt within the
+ * photo — the homography corrects for a tilted camera angle, unlike a simpler bilinear blend.
  */
 export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout): Promise<{ answers: ScanAnswers; debug: ScanDebugInfo }> {
   const data = await Skia.Data.fromURI(photoUri);
@@ -166,7 +216,11 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
   // Use the detected top edge span as the sheet's effective on-photo width, to size sample
   // windows relative to the sheet's actual scale in this photo (not the raw photo dimensions).
   const sheetWidthPx = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
-  const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * sheetWidthPx));
+  // 1.5x the bubble's own diameter, not just the diameter — gives margin for small residual
+  // position error (homography is only as good as the detected corners) and for handwritten
+  // scribbles that aren't perfectly centered in the printed circle, without overlapping the
+  // neighboring bubble (spaced much further apart than this window is wide).
+  const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * sheetWidthPx));
 
   // The corner marks themselves sit inset from the sheet's true edges (layout.corners.*.xPct/yPct
   // are e.g. ~0.035/~0.965, not exactly 0/1) — every bubble percentage must be renormalized onto
@@ -179,6 +233,8 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
   const vMin = layout.corners.topLeft.yPct;
   const vMax = layout.corners.bottomLeft.yPct;
 
+  const homography = computeHomography(corners);
+
   const answers: ScanAnswers = {};
   const debugRows: ScanDebugInfo['rows'] = [];
 
@@ -186,12 +242,13 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
     let darkestOption: string | undefined;
     let darkestValue = Infinity;
     let secondDarkestValue = Infinity;
+    let lightestValue = -Infinity;
     const readings: { option: string; value: number }[] = [];
 
     for (const bubble of row.options) {
       const u = normalize(bubble.center.xPct, uMin, uMax);
       const v = normalize(bubble.center.yPct, vMin, vMax);
-      const center = toPixel(corners, u, v);
+      const center = toPixel(homography, u, v);
       const x = Math.min(Math.max(0, Math.round(center.x - sampleSize / 2)), Math.max(0, width - sampleSize));
       const y = Math.min(Math.max(0, Math.round(center.y - sampleSize / 2)), Math.max(0, height - sampleSize));
 
@@ -211,9 +268,15 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
       } else if (value < secondDarkestValue) {
         secondDarkestValue = value;
       }
+      if (value > lightestValue) {
+        lightestValue = value;
+      }
     }
 
-    const isMarked = darkestValue < MARK_THRESHOLD && secondDarkestValue - darkestValue >= MIN_SEPARATION;
+    const isMarked =
+      darkestValue < MARK_THRESHOLD &&
+      secondDarkestValue - darkestValue >= MIN_SEPARATION &&
+      darkestValue <= lightestValue * (1 - RELATIVE_DROP_RATIO);
     answers[row.question - 1] = isMarked ? darkestOption : undefined;
     debugRows.push({
       question: row.question,
@@ -221,6 +284,7 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
       darkestOption,
       darkestValue: Math.round(darkestValue),
       secondDarkestValue: Number.isFinite(secondDarkestValue) ? Math.round(secondDarkestValue) : -1,
+      lightestValue: Math.round(lightestValue),
       isMarked,
     });
   }

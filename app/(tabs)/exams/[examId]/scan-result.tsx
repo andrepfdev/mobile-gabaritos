@@ -153,7 +153,7 @@ export default function ScanResult() {
               <Text key={row.question} variant="caption" color={colors.textMuted} style={styles.debugLine}>
                 {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}`).join(' ')} → ${
                   row.isMarked ? `marcado ${row.darkestOption}` : 'sem marca'
-                } (min=${row.darkestValue} 2º=${row.secondDarkestValue})`}
+                } (min=${row.darkestValue} 2º=${row.secondDarkestValue} max=${row.lightestValue})`}
               </Text>
             ))}
           </Card>
