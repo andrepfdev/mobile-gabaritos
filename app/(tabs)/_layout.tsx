@@ -1,5 +1,5 @@
 import React from 'react';
-import { Redirect, Slot } from 'expo-router';
+import { Redirect, Slot, usePathname } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
 import { FloatingTabBar, TabItem } from '../../components/ui/FloatingTabBar';
 import { colors } from '../../theme/tokens';
@@ -14,6 +14,10 @@ const TAB_ITEMS: TabItem[] = [
 
 export default function TabsLayout() {
   const { isLoading, hasLapsedSubscription } = useSubscriptionStatus();
+  const pathname = usePathname();
+  // The camera capture screen is full-bleed with its own bottom-anchored footer (the "Capturar"
+  // button) — the floating tab bar would float right on top of it and hide it entirely.
+  const hideTabBar = pathname.endsWith('/scan');
 
   // Avoid flashing protected tab content before we know the subscription status.
   if (isLoading) {
@@ -30,7 +34,7 @@ export default function TabsLayout() {
   return (
     <View style={styles.container}>
       <Slot />
-      <FloatingTabBar items={TAB_ITEMS} />
+      {!hideTabBar ? <FloatingTabBar items={TAB_ITEMS} /> : null}
     </View>
   );
 }

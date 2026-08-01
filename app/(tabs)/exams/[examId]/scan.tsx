@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -49,17 +49,22 @@ export default function ScanGabarito() {
     setCapturing(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
-      if (photo?.uri) {
-        // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
-        // without this, Skia's raw decode can read the image sideways relative to what the
-        // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
-        const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
-          compress: 0.9,
-          format: SaveFormat.JPEG,
-        });
-        setPhotoUri(normalized.uri);
-        router.push(`/exams/${examId}/scan-result`);
+      if (!photo?.uri) {
+        throw new Error('A câmera não retornou uma foto.');
       }
+      // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
+      // without this, Skia's raw decode can read the image sideways relative to what the
+      // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
+      const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
+        compress: 0.9,
+        format: SaveFormat.JPEG,
+      });
+      setPhotoUri(normalized.uri);
+      router.push(`/exams/${examId}/scan-result`);
+    } catch {
+      // Without this, a failed capture/normalize silently left the teacher stuck on the camera
+      // screen with no feedback at all — always surface something instead of failing silently.
+      Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
     } finally {
       setCapturing(false);
     }

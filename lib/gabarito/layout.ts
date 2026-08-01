@@ -9,7 +9,11 @@ const HEADER_HEIGHT_PCT = 0.18;
 const GRID_TOP_PCT = HEADER_HEIGHT_PCT + 0.02;
 const GRID_BOTTOM_PCT = 0.95;
 const COLUMN_GAP_PCT = 0.04;
-const LABEL_WIDTH_RATIO = 0.22;
+// Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
+const LABEL_WIDTH_RATIO = 0.09;
+// Center-to-center spacing between bubbles, as a multiple of bubble diameter — keeps the
+// alternatives clustered tightly together instead of spread across the full column width.
+const BUBBLE_PITCH_FACTOR = 1.9;
 const MAX_ROWS_PER_COLUMN = 25;
 
 export type Point = { xPct: number; yPct: number };
@@ -54,7 +58,14 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
   const rowsPerColumn = Math.ceil(questionCount / columns);
   const columnWidth = (1 - 2 * CORNER_INSET_PCT - (columns - 1) * COLUMN_GAP_PCT) / columns;
   const rowHeight = (GRID_BOTTOM_PCT - GRID_TOP_PCT) / rowsPerColumn;
-  const bubbleRadiusPct = Math.min(rowHeight * 0.28, (columnWidth * (1 - LABEL_WIDTH_RATIO)) / options.length / 2.4);
+  const labelWidth = columnWidth * LABEL_WIDTH_RATIO;
+
+  // Bubble size is driven by row height (vertical density) but capped so the tightly-pitched
+  // group of bubbles still fits within the column width even for many options / narrow columns.
+  const maxDiameterFromWidth = (columnWidth - labelWidth) / ((options.length - 1) * BUBBLE_PITCH_FACTOR + 1);
+  const bubbleDiameterPct = Math.min(rowHeight * 0.56, maxDiameterFromWidth);
+  const bubbleRadiusPct = bubbleDiameterPct / 2;
+  const bubblePitchPct = bubbleDiameterPct * BUBBLE_PITCH_FACTOR;
 
   const rows: QuestionRow[] = [];
   for (let q = 1; q <= questionCount; q++) {
@@ -62,22 +73,25 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
     const rowIndex = (q - 1) % rowsPerColumn;
     const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidth + COLUMN_GAP_PCT);
     const rowY = GRID_TOP_PCT + rowIndex * rowHeight + rowHeight / 2;
-    const labelWidth = columnWidth * LABEL_WIDTH_RATIO;
-    const optionsAreaLeft = columnLeft + labelWidth;
-    const optionsAreaWidth = columnWidth - labelWidth;
+
+    // Center the compact number+bubbles cluster within the column, instead of spreading it
+    // across the full column width, so rows don't end up with a big empty gap on one side.
+    const groupWidth = labelWidth + (options.length - 1) * bubblePitchPct + bubbleDiameterPct;
+    const groupLeft = columnLeft + Math.max(0, (columnWidth - groupWidth) / 2);
+    const optionsAreaLeft = groupLeft + labelWidth;
 
     const rowOptions: BubblePosition[] = options.map((option, i) => ({
       question: q,
       option,
       center: {
-        xPct: optionsAreaLeft + ((i + 0.5) * optionsAreaWidth) / options.length,
+        xPct: optionsAreaLeft + bubbleRadiusPct + i * bubblePitchPct,
         yPct: rowY,
       },
     }));
 
     rows.push({
       question: q,
-      labelCenter: { xPct: columnLeft + labelWidth * 0.35, yPct: rowY },
+      labelCenter: { xPct: groupLeft + labelWidth * 0.4, yPct: rowY },
       options: rowOptions,
     });
   }

@@ -75,10 +75,15 @@ export default function ExportGabarito() {
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
           Baixe a imagem para imprimir ou compartilhe para inserir em um documento de texto.
         </Text>
+        <Text variant="caption" color={colors.textMuted} style={styles.hint}>
+          Ao imprimir ou inserir no documento, use a opção &quot;Ajustar à página&quot; para o
+          gabarito preencher a folha corretamente.
+        </Text>
 
         <ScrollView horizontal contentContainerStyle={styles.previewWrap}>
           <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
-            <GabaritoSheet exam={exam} width={800} />
+            {/* Rendered well above screen resolution so the exported image stays sharp when printed at full A4 size. */}
+            <GabaritoSheet exam={exam} width={1600} />
           </ViewShot>
         </ScrollView>
 
@@ -103,6 +108,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   subtitle: {
+    marginBottom: spacing.xs,
+  },
+  hint: {
     marginBottom: spacing.md,
   },
   previewWrap: {
