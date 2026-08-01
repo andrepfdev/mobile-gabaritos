@@ -10,11 +10,11 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
-import { SHEET_ASPECT_RATIO } from '../../../../lib/gabarito/layout';
+import { buildGabaritoLayout } from '../../../../lib/gabarito/layout';
 
 // Rendered well above screen resolution so the exported image stays sharp when printed at full
-// A4 size — the preview below shows it scaled down to fit the screen, but capture() always
-// grabs the full CAPTURE_WIDTH-resolution bitmap regardless of that visual scale.
+// size — the preview below shows it scaled down to fit the screen, but capture() always grabs
+// the full CAPTURE_WIDTH-resolution bitmap regardless of that visual scale.
 const CAPTURE_WIDTH = 1600;
 
 export default function ExportGabarito() {
@@ -25,11 +25,6 @@ export default function ExportGabarito() {
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const { width: screenWidth } = useWindowDimensions();
 
-  const previewWidth = screenWidth - spacing.lg * 2;
-  const captureHeight = CAPTURE_WIDTH / SHEET_ASPECT_RATIO;
-  const previewScale = previewWidth / CAPTURE_WIDTH;
-  const previewHeight = captureHeight * previewScale;
-
   if (!exam) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -39,6 +34,14 @@ export default function ExportGabarito() {
       </SafeAreaView>
     );
   }
+
+  // The sheet's height (and aspect ratio) depends on the question count — a short exam gets a
+  // shorter sheet instead of a fixed A4 ratio with wasted blank space at the bottom.
+  const aspectRatio = buildGabaritoLayout(exam.questionCount).aspectRatio;
+  const previewWidth = screenWidth - spacing.lg * 2;
+  const captureHeight = CAPTURE_WIDTH / aspectRatio;
+  const previewScale = previewWidth / CAPTURE_WIDTH;
+  const previewHeight = captureHeight * previewScale;
 
   const capture = async (): Promise<string | null> => {
     const uri = await viewShotRef.current?.capture?.();

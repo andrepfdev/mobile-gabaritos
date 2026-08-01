@@ -65,7 +65,7 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
             {`Código: ${exam.code}`}
           </RNText>
         </View>
-        <QRCode value={exam.id} size={width * 0.1} color={colors.dark} backgroundColor={colors.white} />
+        <QRCode value={exam.id} size={width * 0.085} color={colors.dark} backgroundColor={colors.white} />
       </View>
       <View style={[styles.headerDivider, { top: layout.headerHeightPct * height, width }]} />
 

@@ -1,27 +1,25 @@
 export const DEFAULT_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
 
-/** A4 portrait ratio (width/height) — the printed sheet targets A4 so it imports cleanly into a text document. */
-export const SHEET_ASPECT_RATIO = 210 / 297;
+/** A4 width in mm, used only as the reference for width-relative absolute measurements below. */
+const SHEET_WIDTH_MM = 210;
 
 const CORNER_INSET_PCT = 0.035;
 const CORNER_MARK_SIZE_PCT = 0.03;
-// Sized for a 2-line title at the reduced header font size (see GabaritoSheet) — big enough to
-// avoid overlap, small enough to not leave a big empty gap for shorter titles.
-const HEADER_HEIGHT_PCT = 0.14;
-const GRID_TOP_PCT = HEADER_HEIGHT_PCT + 0.02;
-const GRID_BOTTOM_PCT = 0.95;
-// Rows never grow taller than this, regardless of how few questions there are — keeps the grid
-// compact (like a real scantron sheet) instead of stretching to fill the whole page.
-const MAX_ROW_HEIGHT_PCT = 0.075;
-const COLUMN_GAP_PCT = 0.04;
+// All of the constants below are expressed as a fraction of the sheet's WIDTH (not height) —
+// the sheet's height is derived from actual content (header + however many rows fit), instead of
+// assuming a fixed A4 height and hoping the content matches it. This is what avoids both an
+// overlap (content taller than a fixed guess) and a big empty gap (content shorter than it).
+const HEADER_HEIGHT_W = 0.115;
+const GRID_TOP_GAP_W = 0.02;
+const ROW_HEIGHT_W = 0.082;
+const BOTTOM_MARGIN_W = CORNER_INSET_PCT;
+const COLUMN_GAP_W = 0.04;
 // Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
 const LABEL_WIDTH_RATIO = 0.09;
-// Center-to-center spacing between bubbles, as a multiple of bubble diameter — keeps the
-// alternatives clustered together instead of spread across the full column width, while still
-// using a reasonable share of the page (rows are left-aligned, not centered — see below).
+// Center-to-center spacing between bubbles, as a multiple of bubble diameter.
 const BUBBLE_PITCH_FACTOR = 2.2;
 // Bubble diameter as a fraction of row height — the main lever for "bigger circles".
-const BUBBLE_HEIGHT_RATIO = 0.75;
+const BUBBLE_HEIGHT_RATIO = 0.85;
 // Small left padding so rows don't start flush against the corner-inset margin.
 const ROW_LEFT_PADDING_RATIO = 0.02;
 const MAX_ROWS_PER_COLUMN = 25;
@@ -64,52 +62,64 @@ export type GabaritoLayout = {
  * width/height). Shared by the export renderer (GabaritoSheet) and the camera scanner
  * (lib/gabarito/scan.ts) so both agree on exactly where every bubble and corner marker is,
  * regardless of the pixel dimensions each one renders/captures at.
+ *
+ * The sheet's height (and therefore `aspectRatio`) is derived from how many rows actually fit,
+ * not fixed to A4's — a short exam gets a short, tightly-cropped sheet instead of a full A4 page
+ * with a lot of unused blank space at the bottom.
  */
 export function buildGabaritoLayout(questionCount: number, options: string[] = DEFAULT_OPTIONS): GabaritoLayout {
   const columns = questionCount > MAX_ROWS_PER_COLUMN ? 2 : 1;
   const rowsPerColumn = Math.ceil(questionCount / columns);
-  const columnWidth = (1 - 2 * CORNER_INSET_PCT - (columns - 1) * COLUMN_GAP_PCT) / columns;
-  const rowHeight = Math.min((GRID_BOTTOM_PCT - GRID_TOP_PCT) / rowsPerColumn, MAX_ROW_HEIGHT_PCT);
-  const labelWidth = columnWidth * LABEL_WIDTH_RATIO;
+  const columnWidthW = (1 - 2 * CORNER_INSET_PCT - (columns - 1) * COLUMN_GAP_W) / columns;
+  const labelWidthW = columnWidthW * LABEL_WIDTH_RATIO;
 
   // Bubble size is driven by row height (vertical density) but capped so the tightly-pitched
   // group of bubbles still fits within the column width even for many options / narrow columns.
-  const maxDiameterFromWidth = (columnWidth - labelWidth) / ((options.length - 1) * BUBBLE_PITCH_FACTOR + 1);
-  const bubbleDiameterPct = Math.min(rowHeight * BUBBLE_HEIGHT_RATIO, maxDiameterFromWidth);
-  const bubbleRadiusPct = bubbleDiameterPct / 2;
-  const bubblePitchPct = bubbleDiameterPct * BUBBLE_PITCH_FACTOR;
+  const maxDiameterFromWidthW = (columnWidthW - labelWidthW) / ((options.length - 1) * BUBBLE_PITCH_FACTOR + 1);
+  const bubbleDiameterW = Math.min(ROW_HEIGHT_W * BUBBLE_HEIGHT_RATIO, maxDiameterFromWidthW);
+  const bubbleRadiusW = bubbleDiameterW / 2;
+  const bubblePitchW = bubbleDiameterW * BUBBLE_PITCH_FACTOR;
+
+  const gridTopW = HEADER_HEIGHT_W + GRID_TOP_GAP_W;
+  const gridHeightW = rowsPerColumn * ROW_HEIGHT_W;
+  const totalHeightW = gridTopW + gridHeightW + BOTTOM_MARGIN_W;
+  const aspectRatio = 1 / totalHeightW;
+
+  // Convert every width-relative measurement above into a fraction of the *final* sheet height,
+  // matching the Point/percentage API the rest of the app already expects.
+  const toYPct = (valueW: number) => valueW / totalHeightW;
 
   const rows: QuestionRow[] = [];
   for (let q = 1; q <= questionCount; q++) {
     const columnIndex = Math.floor((q - 1) / rowsPerColumn);
     const rowIndex = (q - 1) % rowsPerColumn;
-    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidth + COLUMN_GAP_PCT);
-    const rowY = GRID_TOP_PCT + rowIndex * rowHeight + rowHeight / 2;
+    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidthW + COLUMN_GAP_W);
+    const rowCenterW = gridTopW + rowIndex * ROW_HEIGHT_W + ROW_HEIGHT_W / 2;
 
     // Left-align the number+bubbles cluster (like a real scantron sheet) instead of centering it
     // in the column — centering left big empty margins on *both* sides once bubbles were made
     // compact; left-aligning only leaves the (expected) leftover space on the right.
-    const groupLeft = columnLeft + columnWidth * ROW_LEFT_PADDING_RATIO;
-    const optionsAreaLeft = groupLeft + labelWidth;
+    const groupLeft = columnLeft + columnWidthW * ROW_LEFT_PADDING_RATIO;
+    const optionsAreaLeft = groupLeft + labelWidthW;
 
     const rowOptions: BubblePosition[] = options.map((option, i) => ({
       question: q,
       option,
       center: {
-        xPct: optionsAreaLeft + bubbleRadiusPct + i * bubblePitchPct,
-        yPct: rowY,
+        xPct: optionsAreaLeft + bubbleRadiusW + i * bubblePitchW,
+        yPct: toYPct(rowCenterW),
       },
     }));
 
     rows.push({
       question: q,
-      labelCenter: { xPct: groupLeft + labelWidth * 0.4, yPct: rowY },
+      labelCenter: { xPct: groupLeft + labelWidthW * 0.4, yPct: toYPct(rowCenterW) },
       options: rowOptions,
       band: {
         xPct: columnLeft,
-        yPct: rowY - rowHeight / 2,
-        widthPct: columnWidth,
-        heightPct: rowHeight,
+        yPct: toYPct(rowCenterW - ROW_HEIGHT_W / 2),
+        widthPct: columnWidthW,
+        heightPct: toYPct(ROW_HEIGHT_W),
       },
     });
   }
@@ -117,17 +127,20 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
   return {
     questionCount,
     options,
-    aspectRatio: SHEET_ASPECT_RATIO,
-    headerHeightPct: HEADER_HEIGHT_PCT,
+    aspectRatio,
+    headerHeightPct: toYPct(HEADER_HEIGHT_W),
     cornerMarkSizePct: CORNER_MARK_SIZE_PCT,
     corners: {
-      topLeft: { xPct: CORNER_INSET_PCT, yPct: CORNER_INSET_PCT },
-      topRight: { xPct: 1 - CORNER_INSET_PCT, yPct: CORNER_INSET_PCT },
-      bottomLeft: { xPct: CORNER_INSET_PCT, yPct: 1 - CORNER_INSET_PCT },
-      bottomRight: { xPct: 1 - CORNER_INSET_PCT, yPct: 1 - CORNER_INSET_PCT },
+      topLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(CORNER_INSET_PCT) },
+      topRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(CORNER_INSET_PCT) },
+      bottomLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(totalHeightW - CORNER_INSET_PCT) },
+      bottomRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(totalHeightW - CORNER_INSET_PCT) },
     },
-    bubbleRadiusPct,
+    bubbleRadiusPct: bubbleRadiusW,
     rows,
     bubbles: rows.flatMap((row) => row.options),
   };
 }
+
+/** Kept for anything that still wants the plain A4 ratio (e.g. print-size expectations). */
+export const SHEET_ASPECT_RATIO = SHEET_WIDTH_MM / 297;
