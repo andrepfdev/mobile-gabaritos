@@ -60,6 +60,11 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+/** Rescales `value` from the [min, max] range onto 0..1. */
+function normalize(value: number, min: number, max: number): number {
+  return (value - min) / (max - min);
+}
+
 /** Maps a layout percentage (0..1, 0..1) to an actual photo pixel using the 4 detected corners. */
 function toPixel(corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }, u: number, v: number): PixelPoint {
   const topX = lerp(corners.topLeft.x, corners.topRight.x, u);
@@ -103,6 +108,17 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
   const sheetWidthPx = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
   const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * sheetWidthPx));
 
+  // The corner marks themselves sit inset from the sheet's true edges (layout.corners.*.xPct/yPct
+  // are e.g. ~0.035/~0.965, not exactly 0/1) — every bubble percentage must be renormalized onto
+  // that same [corner, corner] span before the bilinear lerp below, otherwise u=0.15 gets treated
+  // as "15% of the way from one corner mark to the other" when it's really ~15% of the *whole
+  // page*, which is a bit further along the corner-to-corner span — this was silently shifting
+  // every sampled bubble off by a fraction of a column.
+  const uMin = layout.corners.topLeft.xPct;
+  const uMax = layout.corners.topRight.xPct;
+  const vMin = layout.corners.topLeft.yPct;
+  const vMax = layout.corners.bottomLeft.yPct;
+
   const answers: ScanAnswers = {};
 
   for (const row of layout.rows) {
@@ -111,7 +127,9 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
     let secondDarkestValue = Infinity;
 
     for (const bubble of row.options) {
-      const center = toPixel(corners, bubble.center.xPct, bubble.center.yPct);
+      const u = normalize(bubble.center.xPct, uMin, uMax);
+      const v = normalize(bubble.center.yPct, vMin, vMax);
+      const center = toPixel(corners, u, v);
       const x = Math.min(Math.max(0, Math.round(center.x - sampleSize / 2)), Math.max(0, width - sampleSize));
       const y = Math.min(Math.max(0, Math.round(center.y - sampleSize / 2)), Math.max(0, height - sampleSize));
 
