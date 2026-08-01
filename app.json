@@ -8,7 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.andrepfdev.provazero",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -17,7 +21,16 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES"
+      ],
+      "package": "com.andrepfdev.provazero"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,12 +51,18 @@
         {
           "photosPermission": "O app salva as imagens de gabarito exportadas na sua galeria.",
           "savePhotosPermission": "O app salva as imagens de gabarito exportadas na sua galeria.",
-          "granularPermissions": ["photo"]
+          "granularPermissions": [
+            "photo"
+          ]
         }
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://api-gabaritos.vercel.app"
+      "apiBaseUrl": "https://api-gabaritos.vercel.app",
+      "router": {},
+      "eas": {
+        "projectId": "3be962d1-d62c-4479-b7c5-7fee3fde9d26"
+      }
     }
   }
 }
