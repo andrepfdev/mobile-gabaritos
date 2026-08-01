@@ -5,15 +5,22 @@ export const SHEET_ASPECT_RATIO = 210 / 297;
 
 const CORNER_INSET_PCT = 0.035;
 const CORNER_MARK_SIZE_PCT = 0.03;
-const HEADER_HEIGHT_PCT = 0.18;
+// Sized for a 2-line title at the reduced header font size (see GabaritoSheet) — big enough to
+// avoid overlap, small enough to not leave a big empty gap for shorter titles.
+const HEADER_HEIGHT_PCT = 0.14;
 const GRID_TOP_PCT = HEADER_HEIGHT_PCT + 0.02;
 const GRID_BOTTOM_PCT = 0.95;
+// Rows never grow taller than this, regardless of how few questions there are — keeps the grid
+// compact (like a real scantron sheet) instead of stretching to fill the whole page.
+const MAX_ROW_HEIGHT_PCT = 0.075;
 const COLUMN_GAP_PCT = 0.04;
 // Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
 const LABEL_WIDTH_RATIO = 0.09;
 // Center-to-center spacing between bubbles, as a multiple of bubble diameter — keeps the
 // alternatives clustered tightly together instead of spread across the full column width.
-const BUBBLE_PITCH_FACTOR = 1.9;
+const BUBBLE_PITCH_FACTOR = 1.7;
+// Bubble diameter as a fraction of row height — the main lever for "bigger circles".
+const BUBBLE_HEIGHT_RATIO = 0.68;
 const MAX_ROWS_PER_COLUMN = 25;
 
 export type Point = { xPct: number; yPct: number };
@@ -28,6 +35,8 @@ export type QuestionRow = {
   question: number;
   labelCenter: Point;
   options: BubblePosition[];
+  /** Full-width band behind the row (column bounds x row height), for the alternating stripe background. */
+  band: { xPct: number; yPct: number; widthPct: number; heightPct: number };
 };
 
 export type GabaritoLayout = {
@@ -57,13 +66,13 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
   const columns = questionCount > MAX_ROWS_PER_COLUMN ? 2 : 1;
   const rowsPerColumn = Math.ceil(questionCount / columns);
   const columnWidth = (1 - 2 * CORNER_INSET_PCT - (columns - 1) * COLUMN_GAP_PCT) / columns;
-  const rowHeight = (GRID_BOTTOM_PCT - GRID_TOP_PCT) / rowsPerColumn;
+  const rowHeight = Math.min((GRID_BOTTOM_PCT - GRID_TOP_PCT) / rowsPerColumn, MAX_ROW_HEIGHT_PCT);
   const labelWidth = columnWidth * LABEL_WIDTH_RATIO;
 
   // Bubble size is driven by row height (vertical density) but capped so the tightly-pitched
   // group of bubbles still fits within the column width even for many options / narrow columns.
   const maxDiameterFromWidth = (columnWidth - labelWidth) / ((options.length - 1) * BUBBLE_PITCH_FACTOR + 1);
-  const bubbleDiameterPct = Math.min(rowHeight * 0.56, maxDiameterFromWidth);
+  const bubbleDiameterPct = Math.min(rowHeight * BUBBLE_HEIGHT_RATIO, maxDiameterFromWidth);
   const bubbleRadiusPct = bubbleDiameterPct / 2;
   const bubblePitchPct = bubbleDiameterPct * BUBBLE_PITCH_FACTOR;
 
@@ -93,6 +102,12 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
       question: q,
       labelCenter: { xPct: groupLeft + labelWidth * 0.4, yPct: rowY },
       options: rowOptions,
+      band: {
+        xPct: columnLeft,
+        yPct: rowY - rowHeight / 2,
+        widthPct: columnWidth,
+        heightPct: rowHeight,
+      },
     });
   }
 

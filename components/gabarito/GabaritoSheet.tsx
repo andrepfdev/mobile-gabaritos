@@ -1,7 +1,6 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text as RNText, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { Text } from '../ui/Text';
 import { colors } from '../../theme/tokens';
 import { Exam } from '../../lib/localDb/schema';
 import { buildGabaritoLayout, GabaritoLayout } from '../../lib/gabarito/layout';
@@ -33,6 +32,7 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
   const layout = buildGabaritoLayout(exam.questionCount);
   const height = width / layout.aspectRatio;
   const bubbleDiameter = layout.bubbleRadiusPct * width * 2;
+  const labelFontSize = bubbleDiameter * 0.5;
 
   return (
     <View style={[styles.sheet, { width, height }]}>
@@ -41,36 +41,69 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
       <CornerMark layout={layout} width={width} height={height} corner="bottomLeft" />
       <CornerMark layout={layout} width={width} height={height} corner="bottomRight" />
 
-      <View style={[styles.header, { height: layout.headerHeightPct * height, paddingHorizontal: width * 0.06 }]}>
+      {/* minHeight (not height) + top alignment: a long title can wrap to 2 lines and grow the
+          header without overlapping the divider/first row — the divider itself is a separate
+          absolutely-positioned line pinned at the reserved header height, not this View's border. */}
+      <View
+        style={[
+          styles.header,
+          { minHeight: layout.headerHeightPct * height, paddingHorizontal: width * 0.06 },
+        ]}
+      >
         <View style={styles.headerText}>
-          <Text style={{ fontSize: width * 0.032 }} weight="bold">
+          {/* Plain system font (no custom Fredoka family) for every text element on the printed
+              sheet — the brand's playful rounded font isn't legible at small sizes (B/R and E/F
+              become ambiguous) and, in testing, also rendered with visible artifacts through
+              react-native-view-shot. A plain sans-serif is what real bubble sheets use anyway. */}
+          <RNText style={[styles.text, { fontSize: width * 0.026, fontWeight: '700', color: colors.textPrimary }]} numberOfLines={2}>
             {exam.title}
-          </Text>
-          <Text style={{ fontSize: width * 0.02, marginTop: 4 }} color={colors.textMuted}>
+          </RNText>
+          <RNText style={[styles.text, { fontSize: width * 0.018, marginTop: 4, color: colors.textMuted }]}>
             {[exam.subject, exam.className].filter(Boolean).join(' · ') || ' '}
-          </Text>
-          <Text style={{ fontSize: width * 0.024, marginTop: 8 }} weight="bold" color={colors.coral}>
+          </RNText>
+          <RNText style={[styles.text, { fontSize: width * 0.02, marginTop: 6, fontWeight: '700', color: colors.coral }]}>
             {`Código: ${exam.code}`}
-          </Text>
+          </RNText>
         </View>
-        <QRCode value={exam.id} size={layout.headerHeightPct * height * 0.7} color={colors.dark} backgroundColor={colors.white} />
+        <QRCode value={exam.id} size={width * 0.1} color={colors.dark} backgroundColor={colors.white} />
       </View>
+      <View style={[styles.headerDivider, { top: layout.headerHeightPct * height, width }]} />
+
+      {layout.rows.map((row) =>
+        row.question % 2 === 0 ? (
+          <View
+            key={`band-${row.question}`}
+            style={[
+              styles.band,
+              {
+                left: row.band.xPct * width,
+                top: row.band.yPct * height,
+                width: row.band.widthPct * width,
+                height: row.band.heightPct * height,
+              },
+            ]}
+          />
+        ) : null,
+      )}
 
       {layout.rows.map((row) => (
         <React.Fragment key={row.question}>
-          <Text
+          <RNText
             style={[
               styles.label,
+              styles.text,
               {
                 left: row.labelCenter.xPct * width,
                 top: row.labelCenter.yPct * height,
-                fontSize: width * 0.018,
+                fontSize: labelFontSize,
+                fontWeight: '600',
+                color: colors.textPrimary,
+                transform: [{ translateX: -labelFontSize / 2 }, { translateY: -labelFontSize / 2 }],
               },
             ]}
-            weight="medium"
           >
             {`${row.question}`}
-          </Text>
+          </RNText>
           {row.options.map((bubble) => (
             <View
               key={bubble.option}
@@ -85,9 +118,9 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
                 },
               ]}
             >
-              <Text style={{ fontSize: bubbleDiameter * 0.45 }} weight="medium" color={colors.textMuted}>
+              <RNText style={[styles.text, { fontSize: bubbleDiameter * 0.42, fontWeight: '600', color: colors.textMuted }]}>
                 {bubble.option}
-              </Text>
+              </RNText>
             </View>
           ))}
         </React.Fragment>
@@ -103,21 +136,34 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    borderBottomWidth: 2,
-    borderBottomColor: colors.dark,
+    paddingTop: 4,
   },
   headerText: {
     flexShrink: 1,
+    paddingRight: 12,
+  },
+  headerDivider: {
+    position: 'absolute',
+    left: 0,
+    height: 2,
+    backgroundColor: colors.dark,
   },
   cornerMark: {
     position: 'absolute',
     backgroundColor: colors.dark,
   },
+  band: {
+    position: 'absolute',
+    backgroundColor: colors.grayLight,
+    borderRadius: 6,
+  },
   label: {
     position: 'absolute',
-    transform: [{ translateX: -10 }, { translateY: -10 }],
+  },
+  text: {
+    includeFontPadding: false,
   },
   bubble: {
     position: 'absolute',
