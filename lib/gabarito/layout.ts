@@ -17,10 +17,13 @@ const COLUMN_GAP_PCT = 0.04;
 // Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
 const LABEL_WIDTH_RATIO = 0.09;
 // Center-to-center spacing between bubbles, as a multiple of bubble diameter — keeps the
-// alternatives clustered tightly together instead of spread across the full column width.
-const BUBBLE_PITCH_FACTOR = 1.7;
+// alternatives clustered together instead of spread across the full column width, while still
+// using a reasonable share of the page (rows are left-aligned, not centered — see below).
+const BUBBLE_PITCH_FACTOR = 2.2;
 // Bubble diameter as a fraction of row height — the main lever for "bigger circles".
-const BUBBLE_HEIGHT_RATIO = 0.68;
+const BUBBLE_HEIGHT_RATIO = 0.75;
+// Small left padding so rows don't start flush against the corner-inset margin.
+const ROW_LEFT_PADDING_RATIO = 0.02;
 const MAX_ROWS_PER_COLUMN = 25;
 
 export type Point = { xPct: number; yPct: number };
@@ -83,10 +86,10 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
     const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidth + COLUMN_GAP_PCT);
     const rowY = GRID_TOP_PCT + rowIndex * rowHeight + rowHeight / 2;
 
-    // Center the compact number+bubbles cluster within the column, instead of spreading it
-    // across the full column width, so rows don't end up with a big empty gap on one side.
-    const groupWidth = labelWidth + (options.length - 1) * bubblePitchPct + bubbleDiameterPct;
-    const groupLeft = columnLeft + Math.max(0, (columnWidth - groupWidth) / 2);
+    // Left-align the number+bubbles cluster (like a real scantron sheet) instead of centering it
+    // in the column — centering left big empty margins on *both* sides once bubbles were made
+    // compact; left-aligning only leaves the (expected) leftover space on the right.
+    const groupLeft = columnLeft + columnWidth * ROW_LEFT_PADDING_RATIO;
     const optionsAreaLeft = groupLeft + labelWidth;
 
     const rowOptions: BubblePosition[] = options.map((option, i) => ({
