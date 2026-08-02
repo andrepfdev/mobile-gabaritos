@@ -55,7 +55,8 @@
             "photo"
           ]
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "extra": {
       "apiBaseUrl": "https://api-gabaritos.vercel.app",

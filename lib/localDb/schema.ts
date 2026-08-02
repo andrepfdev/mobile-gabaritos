@@ -23,40 +23,10 @@ export type AnswerKey = {
   answers: Record<number, string>; // questionIndex -> 'A'..'E'
 };
 
-export type StudentAnswer = {
-  id: string;
-  examId: string;
-  studentId: string;
-  studentName: string;
-  answers: Record<number, string>;
-  photoUri?: string;
-  startedAt: string;
-  finishedAt?: string;
-};
-
-export type PerQuestionResult = {
-  index: number;
-  correct: boolean;
-  given: string | undefined;
-  expected: string;
-};
-
-export type Result = {
-  studentAnswerId: string;
-  examId: string;
-  studentId: string;
-  scorePercent: number;
-  correctCount: number;
-  wrongCount: number;
-  perQuestion: PerQuestionResult[];
-  timeSpentSeconds?: number;
-  computedAt: string;
-};
-
+// AsyncStorage keys used only by the one-time migration into SQLite (lib/db/*) — see
+// store/examStore.ts's importFromAsyncStorageIfNeeded. Not the primary storage path anymore.
 export const STORAGE_KEYS = {
   exams: '@provazero/exams',
   answerKeys: '@provazero/answerKeys',
-  studentAnswers: '@provazero/studentAnswers',
-  results: '@provazero/results',
   onboardingSeen: '@provazero/onboardingSeen',
 } as const;
