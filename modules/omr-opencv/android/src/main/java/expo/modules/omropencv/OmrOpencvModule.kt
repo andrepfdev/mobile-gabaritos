@@ -223,6 +223,19 @@ class OmrOpencvModule : Module() {
     return ArucoDetector(dictionary, params)
   }
 
+  // Dictionary + DetectorParameters are static config — build once and reuse across every
+  // detectArucoCorners/detectAndWarpOmr call instead of reconstructing per call.
+  @Volatile
+  private var cachedDetector: ArucoDetector? = null
+
+  private fun getDetector(): ArucoDetector {
+    cachedDetector?.let { return it }
+    synchronized(this) {
+      cachedDetector?.let { return it }
+      return buildDetector().also { cachedDetector = it }
+    }
+  }
+
   private fun detectOnGray(gray: Mat, detector: ArucoDetector): DetectionResult {
     val corners = ArrayList<Mat>()
     val ids = Mat()
@@ -426,7 +439,7 @@ class OmrOpencvModule : Module() {
       val ownsGray = gray !== base
       if (ownsGray) base.release()
       try {
-        val detector = buildDetector()
+        val detector = getDetector()
         val detection = detectRobust(gray, detector)
         return@AsyncFunction mapOf(
           "available" to true,
@@ -452,7 +465,7 @@ class OmrOpencvModule : Module() {
 
       // Detect on BT.601; warp ink-aware gray so blue/partial pens read without breaking ArUco.
       val dual = loadDualGray(imageUri)
-      val detector = buildDetector()
+      val detector = getDetector()
       // Most captures are upright — stop at first complete flip (huge latency win).
       val flipModes = listOf("none", "x", "y", "xy")
 

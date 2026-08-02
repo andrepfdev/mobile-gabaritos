@@ -1,14 +1,30 @@
 import { create } from 'zustand';
+import { ScanAnswers, ScanDebugInfo } from '../lib/gabarito/scan';
+
+/** Wall-clock split of onCapture, for temporary on-device profiling (debug card only). */
+export type ScanTimings = {
+  captureMs: number;
+  resizeMs: number;
+  analyzeMs: number;
+  totalMs: number;
+};
+
+export type ScanResult = {
+  photoUri: string;
+  answers: ScanAnswers;
+  debug: ScanDebugInfo;
+  timings: ScanTimings;
+};
 
 type ScanStore = {
-  photoUri: string | null;
-  setPhotoUri: (uri: string | null) => void;
+  result: ScanResult | null;
+  setResult: (result: ScanResult) => void;
   clear: () => void;
 };
 
-/** Holds the last captured gabarito photo in memory only — never persisted, discarded after review. */
+/** Holds the last analyzed gabarito result in memory only — never persisted, discarded after review. */
 export const useScanStore = create<ScanStore>((set) => ({
-  photoUri: null,
-  setPhotoUri: (photoUri) => set({ photoUri }),
-  clear: () => set({ photoUri: null }),
+  result: null,
+  setResult: (result) => set({ result }),
+  clear: () => set({ result: null }),
 }));

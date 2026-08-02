@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,40 +10,8 @@ import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
-import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
-import {
-  AMBIGUOUS_RATIO_THRESHOLD,
-  analyzeGabarito,
-  GabaritoScanError,
-  ScanAnswers,
-  ScanDebugInfo,
-  scoreAgainstAnswerKey,
-  unansweredRatio,
-} from '../../../../lib/gabarito/scan';
-
-type PixelPoint = { x: number; y: number };
-
-type ErrorDebug = {
-  forUri: string;
-  imageWidth?: number;
-  imageHeight?: number;
-  corners?: Partial<{
-    topLeft: PixelPoint;
-    topRight: PixelPoint;
-    bottomLeft: PixelPoint;
-    bottomRight: PixelPoint;
-  }>;
-  message: string;
-  motor?: string;
-  code?: string;
-  markersFound?: number[];
-};
-
-type ScanSuccess = {
-  forUri: string;
-  answers: ScanAnswers;
-  debug: ScanDebugInfo;
-};
+import { optionsForCount } from '../../../../lib/gabarito/layout';
+import { AMBIGUOUS_RATIO_THRESHOLD, scoreAgainstAnswerKey, unansweredRatio } from '../../../../lib/gabarito/scan';
 
 function LegendItem({ color, borderColor, label }: { color: string; borderColor?: string; label: string }) {
   return (
@@ -61,54 +29,17 @@ export default function ScanResult() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
-  const photoUri = useScanStore((s) => s.photoUri);
+  const result = useScanStore((s) => s.result);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
 
-  const [success, setSuccess] = useState<ScanSuccess | null>(null);
-  const [errorDebug, setErrorDebug] = useState<ErrorDebug | null>(null);
-
-  useEffect(() => {
-    if (!exam || !answerKey || !photoUri) return;
-    let cancelled = false;
-    const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
-    analyzeGabarito(photoUri, layout)
-      .then((result) => {
-        if (cancelled) return;
-        setSuccess({ forUri: photoUri, answers: result.answers, debug: result.debug });
-        setErrorDebug(null);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        if (error instanceof GabaritoScanError) {
-          setErrorDebug({
-            forUri: photoUri,
-            imageWidth: error.imageWidth,
-            imageHeight: error.imageHeight,
-            corners: error.corners,
-            message: error.message,
-            motor: error.motor,
-            code: error.code,
-            markersFound: error.markersFound,
-          });
-        } else {
-          setErrorDebug({
-            forUri: photoUri,
-            message: error instanceof Error ? error.message : 'Falha desconhecida na leitura.',
-          });
-        }
-        setSuccess(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [exam, answerKey, photoUri]);
-
   const onScanAgain = () => router.replace(`/exams/${examId}/scan`);
   const onFinish = () => router.replace(`/exams/${examId}`);
 
-  if (!exam || !answerKey || !photoUri) {
+  // The full analysis already runs during capture (scan.tsx), so by the time this screen
+  // mounts the result is ready — no loading state, no re-analysis here.
+  if (!exam || !answerKey || !result) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Text variant="body" style={styles.content}>
@@ -118,72 +49,7 @@ export default function ScanResult() {
     );
   }
 
-  // Derive status from whether success/error match the current photo — no sync setState in effect.
-  const status =
-    errorDebug?.forUri === photoUri ? 'error' : success?.forUri === photoUri ? 'done' : 'loading';
-
-  if (status === 'loading') {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScrollView contentContainerStyle={[styles.content, styles.centered]}>
-          <Text variant="body">Analisando gabarito...</Text>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScrollView contentContainerStyle={[styles.content, styles.centered]}>
-          <Text variant="h2" weight="bold" style={styles.errorTitle}>
-            Não foi possível ler o gabarito
-          </Text>
-          <Text variant="body" color={colors.textMuted} style={styles.errorSubtitle}>
-            Não conseguimos identificar os 4 marcadores dos cantos da folha. Reenquadre, evite
-            reflexo, use fundo claro e boa iluminação, e escaneie de novo.
-          </Text>
-          <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
-
-          {errorDebug ? (
-            <Card variant="grayLight" style={styles.debugCard}>
-              <Text variant="body" weight="bold">
-                Diagnóstico (temporário)
-              </Text>
-              <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {errorDebug.message}
-              </Text>
-              <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {`motor=${errorDebug.motor ?? '?'} · code=${errorDebug.code ?? '?'}${
-                  errorDebug.markersFound?.length
-                    ? ` · IDs=[${errorDebug.markersFound.join(', ')}]`
-                    : ''
-                }`}
-              </Text>
-              {errorDebug.imageWidth ? (
-                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                  {`Foto: ${errorDebug.imageWidth}x${errorDebug.imageHeight}px`}
-                </Text>
-              ) : null}
-              {errorDebug.corners ? (
-                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                  {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)
-                    .map((key) => {
-                      const point = errorDebug.corners?.[key];
-                      return `${key}: ${point ? `(${Math.round(point.x)},${Math.round(point.y)})` : 'não encontrado'}`;
-                    })
-                    .join(' ')}
-                </Text>
-              ) : null}
-            </Card>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  const answers = success!.answers;
-  const debug = success!.debug;
+  const { answers, debug, timings } = result;
   const { correctCount, wrongCount, blankCount, scorePercent } = scoreAgainstAnswerKey(
     answers,
     answerKey.answers,
@@ -248,6 +114,9 @@ export default function ScanResult() {
               Diagnóstico (temporário)
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`Tempos: captura=${timings.captureMs}ms redimensionar=${timings.resizeMs}ms leitura=${timings.analyzeMs}ms total=${timings.totalMs}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
               {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px · flip=${debug.flipMode} · motor=${debug.motor}`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
@@ -302,11 +171,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontFamily: 'monospace',
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   title: {
     marginBottom: spacing.sm,
   },
@@ -321,13 +185,5 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-  },
-  errorTitle: {
-    marginBottom: spacing.xs,
-    textAlign: 'center',
-  },
-  errorSubtitle: {
-    marginBottom: spacing.md,
-    textAlign: 'center',
   },
 });

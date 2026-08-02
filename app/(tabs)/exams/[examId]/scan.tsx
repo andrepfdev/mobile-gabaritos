@@ -12,14 +12,14 @@ import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
-import { gateCaptureAruco } from '../../../../lib/gabarito/omr/captureGate';
+import { analyzeGabarito } from '../../../../lib/gabarito/scan';
 
 export default function ScanGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
-  const setPhotoUri = useScanStore((s) => s.setPhotoUri);
+  const setResult = useScanStore((s) => s.setResult);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
@@ -46,36 +46,62 @@ export default function ScanGabarito() {
   );
 
   const onCapture = async () => {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturing || !layout) return;
     setCapturing(true);
+    // TEMPORARY profiling — wall-clock split of each phase, surfaced only in the
+    // "Diagnóstico (temporário)" debug card on the result screen. Remove once the
+    // real bottleneck in this pipeline is identified and addressed.
+    const t0 = Date.now();
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
-      if (!photo?.uri) {
-        throw new Error('A câmera não retornou uma foto.');
+      let normalizedUri: string;
+      let t1 = t0;
+      let t2 = t0;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
+        t1 = Date.now();
+        if (!photo?.uri) {
+          throw new Error('A câmera não retornou uma foto.');
+        }
+        // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
+        // without this, Skia's raw decode can read the image sideways relative to what the
+        // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
+        // Resize for memory; keep JPEG near-lossless so ArUco modules survive re-encode.
+        // Single JPEG encode (bake EXIF + resize). loadGray reads bytes without re-encoding.
+        const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
+          compress: 1,
+          format: SaveFormat.JPEG,
+        });
+        t2 = Date.now();
+        normalizedUri = normalized.uri;
+      } catch {
+        Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
+        return;
       }
-      // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
-      // without this, Skia's raw decode can read the image sideways relative to what the
-      // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
-      // Resize for memory; keep JPEG near-lossless so ArUco modules survive re-encode.
-      // Single JPEG encode (bake EXIF + resize). loadGray reads bytes without re-encoding.
-      const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
-        compress: 1,
-        format: SaveFormat.JPEG,
-      });
 
-      const gate = await gateCaptureAruco(normalized.uri);
-      if (!gate.ok) {
+      // Runs the full detect+warp+bubble-read pipeline once here (instead of a cheap
+      // detect-only gate followed by a second full pass on the result screen) — the same
+      // ArUco corners are known upfront from `layout`, so there's nothing left to redo later.
+      try {
+        const { answers, debug } = await analyzeGabarito(normalizedUri, layout);
+        const t3 = Date.now();
+        setResult({
+          photoUri: normalizedUri,
+          answers,
+          debug,
+          timings: {
+            captureMs: Math.round(t1 - t0),
+            resizeMs: Math.round(t2 - t1),
+            analyzeMs: Math.round(t3 - t2),
+            totalMs: Math.round(t3 - t0),
+          },
+        });
+        router.push(`/exams/${examId}/scan-result`);
+      } catch {
         Alert.alert(
           'Não identificamos os cantos da folha',
           'Reenquadre a folha, garanta boa iluminação e capture de novo.',
         );
-        return;
       }
-
-      setPhotoUri(normalized.uri);
-      router.push(`/exams/${examId}/scan-result`);
-    } catch {
-      Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
     } finally {
       setCapturing(false);
     }
