@@ -23,7 +23,7 @@ class OmrOpencvModule extends NativeModule {
       arucoScore: 0,
       warpedWidth: options.outWidth,
       warpedHeight: options.outHeight,
-      warpedGrayBase64: '',
+      warpedGray: new Uint8Array(0),
     };
   }
 }

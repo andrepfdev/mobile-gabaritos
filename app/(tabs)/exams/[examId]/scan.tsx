@@ -164,8 +164,8 @@ export default function ScanGabarito() {
 
         <View style={styles.footer}>
           <Text variant="caption" color={colors.white} style={styles.hint}>
-            Caneta preta ou azul. Prefira preencher bem o círculo (aceita preenchimento parcial).
-            Enquadre os 4 marcadores dos cantos da folha, fundo claro, luz uniforme — sem teclado atrás.
+            Caneta preta ou azul. Preencher bem o círculo (aceita preenchimento parcial).
+            Enquadre os 4 marcadores dos cantos da folha, fundo claro, luz uniforme.
           </Text>
           <PillButton
             title={

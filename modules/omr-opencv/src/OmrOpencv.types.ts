@@ -38,8 +38,8 @@ export type NativeOmrWarpResult = {
   arucoScore: number;
   warpedWidth: number;
   warpedHeight: number;
-  /** Raw grayscale bytes (length = warpedWidth * warpedHeight), base64 NO_WRAP. */
-  warpedGrayBase64: string;
+  /** Raw grayscale bytes (length = warpedWidth * warpedHeight), delivered as a real Uint8Array (no base64). */
+  warpedGray: Uint8Array;
 };
 
 export type ArucoFlipMode = 'none' | 'x' | 'y' | 'xy';

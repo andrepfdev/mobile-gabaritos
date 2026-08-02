@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
-import android.util.Base64
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -412,14 +411,14 @@ class OmrOpencvModule : Module() {
     }
   }
 
-  private fun matToGrayBase64(mat: Mat): String {
+  private fun matToGrayBytes(mat: Mat): ByteArray {
     val continuous = if (mat.isContinuous) mat else mat.clone()
     try {
       val cols = continuous.cols()
       val rows = continuous.rows()
       val bytes = ByteArray(cols * rows)
       continuous.get(0, 0, bytes)
-      return Base64.encodeToString(bytes, Base64.NO_WRAP)
+      return bytes
     } finally {
       if (continuous !== mat) continuous.release()
     }
@@ -506,7 +505,7 @@ class OmrOpencvModule : Module() {
             "arucoScore" to (bestPartial?.score ?: 0.0),
             "warpedWidth" to outWidth,
             "warpedHeight" to outHeight,
-            "warpedGrayBase64" to "",
+            "warpedGray" to ByteArray(0),
           )
         }
 
@@ -543,7 +542,7 @@ class OmrOpencvModule : Module() {
               "arucoScore" to detection.score,
               "warpedWidth" to normalized.cols(),
               "warpedHeight" to normalized.rows(),
-              "warpedGrayBase64" to matToGrayBase64(normalized),
+              "warpedGray" to matToGrayBytes(normalized),
             )
           } finally {
             normalized.release()

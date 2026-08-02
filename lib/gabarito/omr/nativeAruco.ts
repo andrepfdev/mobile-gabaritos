@@ -1,4 +1,3 @@
-import { Buffer } from 'buffer';
 import OmrOpencv from 'omr-opencv';
 import { ARUCO_CORNER_IDS } from '../arucoPatterns';
 import { CornerQuad, PixelPoint, quadLooksPlausible } from './geometry';
@@ -183,7 +182,7 @@ export async function detectAndWarpNativeOmr(
     });
   }
 
-  if (!result.complete || !result.warpedGrayBase64) {
+  if (!result.complete || !result.warpedGray || result.warpedGray.length === 0) {
     throw new NativeOmrError(
       'incomplete_markers',
       `OpenCV não encontrou as 4 marcas ArUco (IDs 0–3). Detectados: [${markersFound.join(', ') || 'nenhum'}].`,
@@ -197,7 +196,7 @@ export async function detectAndWarpNativeOmr(
   }
 
   const expected = result.warpedWidth * result.warpedHeight;
-  const warpedGray = new Uint8Array(Buffer.from(result.warpedGrayBase64, 'base64'));
+  const warpedGray = result.warpedGray;
   if (warpedGray.length !== expected) {
     throw new NativeOmrError(
       'buffer_mismatch',
