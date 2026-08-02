@@ -8,8 +8,9 @@ export function optionsForCount(optionsCount: 4 | 5): string[] {
 /** A4 width in mm, used only as the reference for width-relative absolute measurements below. */
 const SHEET_WIDTH_MM = 210;
 
-const CORNER_INSET_PCT = 0.035;
-const CORNER_MARK_SIZE_PCT = 0.03;
+const CORNER_INSET_PCT = 0.04;
+/** Larger fiducials (~8–10 mm on A4-width print) improve phone detection vs keyboard/QR noise. */
+const CORNER_MARK_SIZE_PCT = 0.05;
 // All of the constants below are expressed as a fraction of the sheet's WIDTH (not height) —
 // the sheet's height is derived from actual content (header + however many rows fit), instead of
 // assuming a fixed A4 height and hoping the content matches it. This is what avoids both an

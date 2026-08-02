@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { NoActiveSubscriptionCard } from '../components/subscription/NoActiveSubscriptionCard';
 import { PillButton } from '../components/ui/PillButton';
 import { colors, spacing } from '../theme/tokens';

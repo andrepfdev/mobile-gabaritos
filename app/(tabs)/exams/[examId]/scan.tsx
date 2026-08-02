@@ -111,7 +111,6 @@ export default function ScanGabarito() {
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={onBarcodeScanned}
       />
-      <AlignmentGuide layout={layout} />
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
         <Card variant="light" style={styles.tipCard}>
@@ -120,12 +119,15 @@ export default function ScanGabarito() {
           </Text>
         </Card>
 
+        {/* Guide lives in the free band between tip + footer so it is not clipped/pushed high. */}
+        <AlignmentGuide layout={layout} fillParent />
+
         <View style={styles.footer}>
           <Text variant="caption" color={colors.white} style={styles.hint}>
-            Use boa iluminação e evite sombras sobre a folha.
+            Enquadre as 4 marcas de canto no guia. Fundo liso, boa luz, sem teclado atrás da folha.
           </Text>
           <PillButton
-            title={capturing ? 'Capturando...' : 'Capturar'}
+            title={capturing ? 'Capturando...' : codeVerified ? 'Capturar' : 'Aguardando QR da prova'}
             variant="accent"
             onPress={onCapture}
             disabled={!codeVerified || capturing}
@@ -156,15 +158,18 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
   tipCard: {
     alignSelf: 'center',
+    marginBottom: spacing.sm,
   },
   footer: {
     alignItems: 'center',
     gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   hint: {
     textAlign: 'center',

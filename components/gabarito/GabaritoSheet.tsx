@@ -3,30 +3,14 @@ import { StyleSheet, Text as RNText, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/tokens';
 import { Exam } from '../../lib/localDb/schema';
-import { buildGabaritoLayout, GabaritoLayout, optionsForCount } from '../../lib/gabarito/layout';
+import { ARUCO_CORNER_IDS } from '../../lib/gabarito/arucoPatterns';
+import { buildGabaritoLayout, optionsForCount } from '../../lib/gabarito/layout';
+import { ArucoMarker } from './ArucoMarker';
 
 export type GabaritoSheetProps = {
   exam: Exam;
   width?: number;
 };
-
-function CornerMark({ layout, width, height, corner }: { layout: GabaritoLayout; width: number; height: number; corner: keyof GabaritoLayout['corners'] }) {
-  const point = layout.corners[corner];
-  const size = layout.cornerMarkSizePct * width;
-  return (
-    <View
-      style={[
-        styles.cornerMark,
-        {
-          width: size,
-          height: size,
-          left: point.xPct * width - size / 2,
-          top: point.yPct * height - size / 2,
-        },
-      ]}
-    />
-  );
-}
 
 export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
   const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
@@ -128,13 +112,20 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
         </React.Fragment>
       ))}
 
-      {/* Rendered last (on top of the row stripes) — the bottom corner marks sit close enough to
-          the last row that an even-numbered final row's stripe could otherwise paint over part of
-          them, leaving a clipped-looking mark that throws off corner detection when scanning. */}
-      <CornerMark layout={layout} width={width} height={height} corner="topLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="topRight" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomRight" />
+      {/* ArUco DICT_4X4 IDs 0–3 (TL/TR/BR/BL). Rendered last so row stripes never clip the marks. */}
+      {(['topLeft', 'topRight', 'bottomRight', 'bottomLeft'] as const).map((corner) => {
+        const point = layout.corners[corner];
+        const size = layout.cornerMarkSizePct * width;
+        return (
+          <ArucoMarker
+            key={corner}
+            id={ARUCO_CORNER_IDS[corner]}
+            size={size}
+            left={point.xPct * width - size / 2}
+            top={point.yPct * height - size / 2}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -158,10 +149,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     height: 2,
-    backgroundColor: colors.dark,
-  },
-  cornerMark: {
-    position: 'absolute',
     backgroundColor: colors.dark,
   },
   band: {

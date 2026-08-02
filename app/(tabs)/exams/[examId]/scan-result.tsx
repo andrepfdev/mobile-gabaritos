@@ -110,7 +110,7 @@ export default function ScanResult() {
             Não foi possível ler o gabarito
           </Text>
           <Text variant="body" color={colors.textMuted} style={styles.errorSubtitle}>
-            Alinhe a folha às marcas e tente novamente.
+            Enquadre as 4 marcas de canto, use fundo claro e boa iluminação — sem teclado ou objetos escuros atrás.
           </Text>
           <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
 
@@ -164,8 +164,11 @@ export default function ScanResult() {
         {isAmbiguous ? (
           <Card variant="pink" style={styles.card}>
             <Text variant="body" weight="medium">
-              Não conseguimos ler várias respostas. Alinhe a folha às marcas e tente novamente.
+              Leitura incompleta — várias bolhas ficaram sem marcação clara. Escaneie de novo com as 4 marcas no guia e luz uniforme (não edite manualmente).
             </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <PillButton title="Escanear novamente" variant="accent" onPress={onScanAgain} />
+            </View>
           </Card>
         ) : null}
 
@@ -205,16 +208,16 @@ export default function ScanResult() {
               Diagnóstico (temporário)
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · janela de amostra: ${debug.sampleSize}px`}
+              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
               {`Cantos: TL(${Math.round(debug.corners.topLeft.x)},${Math.round(debug.corners.topLeft.y)}) TR(${Math.round(debug.corners.topRight.x)},${Math.round(debug.corners.topRight.y)}) BL(${Math.round(debug.corners.bottomLeft.x)},${Math.round(debug.corners.bottomLeft.y)}) BR(${Math.round(debug.corners.bottomRight.x)},${Math.round(debug.corners.bottomRight.y)})`}
             </Text>
             {debug.rows.map((row) => (
               <Text key={row.question} variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}@(${r.x},${r.y})`).join(' ')} → ${
-                  row.isMarked ? `marcado ${row.darkestOption}` : 'sem marca'
-                } (min=${row.darkestValue} 2º=${row.secondDarkestValue} max=${row.lightestValue})`}
+                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.fill.toFixed(2)}`).join(' ')} → ${
+                  row.isMarked ? `marcado ${row.chosen}` : 'sem marca'
+                } (margem=${row.margin} z=${row.zScore})`}
               </Text>
             ))}
           </Card>

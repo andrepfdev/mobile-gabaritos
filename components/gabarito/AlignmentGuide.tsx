@@ -5,17 +5,19 @@ import { GabaritoLayout } from '../../lib/gabarito/layout';
 
 export type AlignmentGuideProps = {
   layout: GabaritoLayout;
+  /** Center inside the parent flex slot (between tip card and capture button). */
+  fillParent?: boolean;
 };
 
 /**
- * Visual guide overlaid on the camera preview so the teacher can manually align the printed
- * sheet's corner markers within it before capturing — this is a manual substitute for automatic
- * perspective correction (which this app doesn't implement).
+ * Visual guide overlaid on the camera preview so the teacher aligns the printed ArUco corner
+ * markers before capturing. Perspective correction runs after capture (warp → ROI sampling).
  */
-export function AlignmentGuide({ layout }: AlignmentGuideProps) {
+export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuideProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
-  const maxWidth = screenWidth * 0.86;
-  const maxHeight = screenHeight * 0.68;
+  const maxWidth = screenWidth * 0.82;
+  // When embedded between chrome, keep the frame fully visible and easy to aim.
+  const maxHeight = fillParent ? screenHeight * 0.5 : screenHeight * 0.55;
 
   let guideWidth = maxWidth;
   let guideHeight = guideWidth / layout.aspectRatio;
@@ -27,7 +29,7 @@ export function AlignmentGuide({ layout }: AlignmentGuideProps) {
   const markSize = layout.cornerMarkSizePct * guideWidth;
 
   return (
-    <View pointerEvents="none" style={styles.wrap}>
+    <View pointerEvents="none" style={fillParent ? styles.slotWrap : styles.screenWrap}>
       <View style={[styles.guide, { width: guideWidth, height: guideHeight }]}>
         {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const).map((corner) => {
           const point = layout.corners[corner];
@@ -52,10 +54,16 @@ export function AlignmentGuide({ layout }: AlignmentGuideProps) {
 }
 
 const styles = StyleSheet.create({
-  wrap: {
+  screenWrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  slotWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 0,
   },
   guide: {
     borderWidth: 2,
