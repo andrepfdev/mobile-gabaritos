@@ -1,3 +1,4 @@
+import { ArucoHit, cornersFromArucoHits, decodeArucoInRoi } from './aruco';
 import { CornerQuad, PixelPoint, quadLooksPlausible } from './geometry';
 
 type Component = {
@@ -149,9 +150,9 @@ function toCandidates(components: Component[], width: number, height: number): S
     if (w < minSize || h < minSize || w > maxSize || h > maxSize) continue;
     const boxArea = w * h;
     const fill = c.count / boxArea;
-    // Accept ArUco-like mid fill and solid square fiducials; reject clean filled disks (~0.78).
-    if (fill < 0.22 || fill > 0.97) continue;
-    if (fill > 0.73 && fill < 0.87) continue;
+    // Keep a wide fill band so ArUco (mid-fill / print holes) still becomes a decode candidate.
+    // Filled bubbles (~0.78) are filtered later by failed ArUco decode + quad scoring.
+    if (fill < 0.2 || fill > 0.98) continue;
     out.push({
       center: { x: (c.minX + c.maxX) / 2, y: (c.minY + c.maxY) / 2 },
       size: (w + h) / 2,
@@ -205,124 +206,152 @@ function findPaperExtremes(gray: Uint8Array, width: number, height: number): Cor
   return { topLeft: tl, topRight: tr, bottomLeft: bl, bottomRight: br };
 }
 
-function quadArea(c: CornerQuad): number {
-  const { topLeft: a, topRight: b, bottomRight: cbr, bottomLeft: d } = c;
-  return Math.abs(
-    (a.x * b.y + b.x * cbr.y + cbr.x * d.y + d.x * a.y - (a.y * b.x + b.y * cbr.x + cbr.y * d.x + d.y * a.x)) / 2,
-  );
-}
-
-function sizeConsistency(sizes: number[]): number {
-  const mean = sizes.reduce((s, v) => s + v, 0) / sizes.length;
-  if (mean <= 0) return 0;
-  const variance = sizes.reduce((s, v) => s + (v - mean) * (v - mean), 0) / sizes.length;
-  return 1 - Math.min(1, Math.sqrt(variance) / mean);
-}
-
-function dist(a: PixelPoint, b: PixelPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-/**
- * Prefer the 4-candidate quad that is large, size-consistent, and near the paper extremes.
- * Extreme-picking alone latches onto filled bubbles near the sheet edge (esp. Q1A / Q10A).
- */
-function selectBestQuad(
-  candidates: SquareCandidate[],
+function bestDecodeAt(
+  gray: Uint8Array,
   width: number,
   height: number,
-  paper: CornerQuad | null,
-): CornerQuad | null {
-  const minSep = Math.min(width, height) * 0.18;
-  const maxN = Math.min(candidates.length, 18);
-  const medianSize = [...candidates].sort((a, b) => a.size - b.size)[Math.floor(candidates.length / 2)].size;
-  const ranked = [...candidates].sort((a, b) => {
-    const da = Math.abs(a.size - medianSize);
-    const db = Math.abs(b.size - medianSize);
-    return da - db;
-  });
-  const pool = ranked.slice(0, maxN);
-
-  let best: CornerQuad | null = null;
-  let bestScore = -Infinity;
-
-  for (let i = 0; i < pool.length; i++) {
-    for (let j = i + 1; j < pool.length; j++) {
-      for (let k = j + 1; k < pool.length; k++) {
-        for (let l = k + 1; l < pool.length; l++) {
-          const four = [pool[i], pool[j], pool[k], pool[l]];
-          const tl = four.reduce((b, c) => (c.center.x + c.center.y < b.center.x + b.center.y ? c : b));
-          const tr = four.reduce((b, c) =>
-            width - c.center.x + c.center.y < width - b.center.x + b.center.y ? c : b,
-          );
-          const bl = four.reduce((b, c) =>
-            c.center.x + (height - c.center.y) < b.center.x + (height - b.center.y) ? c : b,
-          );
-          const br = four.reduce((b, c) =>
-            width - c.center.x + (height - c.center.y) < width - b.center.x + (height - b.center.y) ? c : b,
-          );
-          if (new Set([tl, tr, bl, br]).size < 4) continue;
-
-          const corners: CornerQuad = {
-            topLeft: tl.center,
-            topRight: tr.center,
-            bottomLeft: bl.center,
-            bottomRight: br.center,
-          };
-          if (!quadLooksPlausible(corners)) continue;
-          if (corners.topLeft.x >= corners.topRight.x || corners.bottomLeft.x >= corners.bottomRight.x) continue;
-          if (corners.topLeft.y >= corners.bottomLeft.y || corners.topRight.y >= corners.bottomRight.y) continue;
-
-          const pts = [tl, tr, bl, br];
-          let sepOk = true;
-          for (let a = 0; a < 4 && sepOk; a++) {
-            for (let b = a + 1; b < 4; b++) {
-              if (dist(pts[a].center, pts[b].center) < minSep) {
-                sepOk = false;
-                break;
-              }
-            }
-          }
-          if (!sepOk) continue;
-
-          const area = quadArea(corners);
-          const consistency = sizeConsistency(pts.map((p) => p.size));
-          let paperFit = 1;
-          if (paper) {
-            const fit =
-              dist(corners.topLeft, paper.topLeft) +
-              dist(corners.topRight, paper.topRight) +
-              dist(corners.bottomLeft, paper.bottomLeft) +
-              dist(corners.bottomRight, paper.bottomRight);
-            // Strong penalty: filled bubbles sit well inside the sheet vs fiducials at paper corners.
-            paperFit = 1 / (1 + fit / (Math.min(width, height) * 0.25));
-          }
-          const score = area * (0.25 + 0.2 * consistency + 0.55 * paperFit);
-          if (score > bestScore) {
-            bestScore = score;
-            best = corners;
-          }
-        }
-      }
-    }
+  center: PixelPoint,
+  size: number,
+  scaleFactors: number[],
+): ArucoHit | null {
+  let best: ArucoHit | null = null;
+  for (const scale of scaleFactors) {
+    const hit = decodeArucoInRoi(gray, width, height, center, size * scale);
+    if (hit && (!best || hit.score > best.score)) best = hit;
   }
-
   return best;
 }
 
 /**
- * Finds the 4 printed corner fiducials (ArUco outer boxes / solid squares) by shape,
- * choosing the largest size-consistent quad near the paper extremes.
+ * CC bboxes often miss one marker (merged border / JPEG). Seed ROIs near the four
+ * image corners and paper extremes at multiple mark scales (3–8% minDim).
+ */
+function seedArucoHits(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  paper: CornerQuad | null,
+): ArucoHit[] {
+  const minDim = Math.min(width, height);
+  const markSizes = [0.035, 0.05, 0.075].map((f) => minDim * f);
+  const insetXs = [0.035, 0.06].map((f) => minDim * f);
+  const scaleFactors = [0.8, 0.95, 1.0, 1.15];
+  // Top ArUco sit below the identity header (~12–22% of sheet height), not at the image edge.
+  const topYs = [0.08, 0.14, 0.2, 0.26].map((f) => height * f);
+  const bottomYs = [0.74, 0.84, 0.92].map((f) => height * f);
+  const seeds: PixelPoint[] = [];
+  for (const insetX of insetXs) {
+    for (const y of topYs) {
+      seeds.push({ x: insetX, y }, { x: width - insetX, y });
+    }
+    for (const y of bottomYs) {
+      seeds.push({ x: insetX, y }, { x: width - insetX, y });
+    }
+  }
+  if (paper) {
+    seeds.push(paper.topLeft, paper.topRight, paper.bottomLeft, paper.bottomRight);
+  }
+
+  const hits: ArucoHit[] = [];
+  for (const center of seeds) {
+    for (const mark of markSizes) {
+      for (const dx of [-6, 0, 6]) {
+        for (const dy of [-6, 0, 6]) {
+          const hit = bestDecodeAt(
+            gray,
+            width,
+            height,
+            { x: center.x + dx, y: center.y + dy },
+            mark,
+            scaleFactors,
+          );
+          if (hit) hits.push(hit);
+        }
+      }
+    }
+  }
+  return hits;
+}
+
+export type ArucoCornerFind = {
+  corners: CornerQuad;
+  score: number;
+  ids: number[];
+};
+
+function findArucoCorners(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  candidates: SquareCandidate[],
+  paper: CornerQuad | null,
+): ArucoCornerFind | null {
+  // CC bbox is often larger than the true marker (merged border / JPEG bleed).
+  const scaleFactors = [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.35];
+  const hits: ArucoHit[] = [];
+  for (const c of candidates) {
+    const best = bestDecodeAt(gray, width, height, c.center, c.size, scaleFactors);
+    if (best) hits.push(best);
+  }
+  hits.push(...seedArucoHits(gray, width, height, paper));
+
+  const corners = cornersFromArucoHits(hits);
+  if (!corners) return null;
+  if (!quadLooksPlausible(corners)) return null;
+  if (corners.topLeft.x >= corners.topRight.x || corners.bottomLeft.x >= corners.bottomRight.x) return null;
+  if (corners.topLeft.y >= corners.bottomLeft.y || corners.topRight.y >= corners.bottomRight.y) return null;
+
+  const byId = new Map<number, ArucoHit>();
+  for (const hit of hits) {
+    const prev = byId.get(hit.id);
+    if (!prev || hit.score > prev.score) byId.set(hit.id, hit);
+  }
+  const ids = [...byId.keys()].sort((a, b) => a - b);
+  let score = 0;
+  for (const hit of byId.values()) score += hit.score;
+  return { corners, score, ids };
+}
+
+/**
+ * Finds the 4 corner fiducials via decoded ArUco IDs 0–3 (TL/TR/BR/BL).
+ * No silent shape/bubble fallback — missing 4/4 means rescan.
  */
 export function findCornerMarks(gray: Uint8Array, width: number, height: number): CornerQuad | null {
+  return findCornerMarksScored(gray, width, height)?.corners ?? null;
+}
+
+/** Keep CC candidates near image corners (fiducials), not filled bubbles mid-sheet (G17). */
+function isCornerBandCandidate(c: SquareCandidate, width: number, height: number): boolean {
+  const xBand = width * 0.28;
+  const yBand = height * 0.32;
+  const x = c.center.x;
+  const y = c.center.y;
+  const nearX = x <= xBand || x >= width - xBand;
+  const nearY = y <= yBand || y >= height - yBand;
+  return nearX && nearY;
+}
+
+/** Same as findCornerMarks, with ArUco quality score for flip selection. */
+export function findCornerMarksScored(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+): ArucoCornerFind | null {
   const threshold = Math.min(140, Math.max(60, otsuThreshold(gray)));
   const binary = new Uint8Array(width * height);
   for (let i = 0; i < gray.length; i++) binary[i] = gray[i] < threshold ? 1 : 0;
+  // Light open (erode then dilate) instead of heavy close — less glue on dark desks.
   const closed = morphCloseDark(binary, width, height);
   const components = labelDarkComponents(closed, width, height);
-  const candidates = toCandidates(components, width, height);
-  if (candidates.length < 4) return null;
+  const allCandidates = toCandidates(components, width, height);
+  const cornerBand = allCandidates.filter((c) => isCornerBandCandidate(c, width, height));
+  const candidates = cornerBand.length >= 4 ? cornerBand : allCandidates;
+  if (candidates.length < 4) {
+    // Still try seeds-only path via empty candidate list + paper extremes.
+    const paper = findPaperExtremes(gray, width, height);
+    return findArucoCorners(gray, width, height, [], paper);
+  }
 
   const paper = findPaperExtremes(gray, width, height);
-  return selectBestQuad(candidates, width, height, paper);
+  return findArucoCorners(gray, width, height, candidates, paper);
 }

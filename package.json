@@ -27,6 +27,8 @@
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "hermes-compiler": "250829098.0.16",
+    "jpeg-js": "^0.4.4",
+    "omr-opencv": "file:modules/omr-opencv",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.2",

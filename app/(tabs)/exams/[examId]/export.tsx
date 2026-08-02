@@ -21,7 +21,7 @@ export default function ExportGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const exams = useExamStore((s) => s.exams);
   const exam = exams.find((e) => e.id === examId);
-  const viewShotRef = useRef<ViewShot>(null);
+  const viewShotRef = useRef<React.ElementRef<typeof ViewShot>>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const { width: screenWidth } = useWindowDimensions();
 

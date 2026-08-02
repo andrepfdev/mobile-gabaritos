@@ -83,9 +83,40 @@ export function sampleBilinear(gray: Uint8Array, width: number, height: number, 
   return v00 * (1 - fx) * (1 - fy) + v10 * fx * (1 - fy) + v01 * (1 - fx) * fy + v11 * fx * fy;
 }
 
+export type SheetCornerPct = {
+  topLeft: { xPct: number; yPct: number };
+  topRight: { xPct: number; yPct: number };
+  bottomLeft: { xPct: number; yPct: number };
+  bottomRight: { xPct: number; yPct: number };
+};
+
+/** Newton inverse: photo/layout pixel → unit square for a homography from computeHomography. */
+function inverseToUnit(homography: Homography, x: number, y: number): { u: number; v: number } {
+  let u = 0.5;
+  let v = 0.5;
+  for (let i = 0; i < 12; i++) {
+    const p = toPixel(homography, u, v);
+    const eps = 1e-3;
+    const pu = toPixel(homography, u + eps, v);
+    const pv = toPixel(homography, u, v + eps);
+    const dxdu = (pu.x - p.x) / eps;
+    const dxdv = (pv.x - p.x) / eps;
+    const dydu = (pu.y - p.y) / eps;
+    const dydv = (pv.y - p.y) / eps;
+    const det = dxdu * dydv - dxdv * dydu;
+    if (Math.abs(det) < 1e-9) break;
+    const ex = x - p.x;
+    const ey = y - p.y;
+    u += (ex * dydv - ey * dxdv) / det;
+    v += (-ex * dydu + ey * dxdu) / det;
+  }
+  return { u, v };
+}
+
 /**
- * Warps the photo so the detected corner marks land on the four corners of the output image.
- * Bubble layout percentages are then remapped with the same corner-inset normalization used before.
+ * Warps the photo into a flat sheet image where layout percentages map 1:1 to pixels.
+ * Pins all 4 layout corner positions (like OpenCV getPerspectiveTransform), not only
+ * axis-aligned TL–TR / TL–BL spans.
  */
 export function warpToCanonical(
   gray: Uint8Array,
@@ -94,17 +125,33 @@ export function warpToCanonical(
   corners: CornerQuad,
   outWidth: number,
   outHeight: number,
+  layoutCorners?: SheetCornerPct,
 ): Uint8Array {
-  const homography = computeHomography(corners);
   const out = new Uint8Array(outWidth * outHeight);
-  const maxU = Math.max(1, outWidth - 1);
-  const maxV = Math.max(1, outHeight - 1);
+  const maxX = Math.max(1, outWidth - 1);
+  const maxY = Math.max(1, outHeight - 1);
+
+  const lc = layoutCorners ?? {
+    topLeft: { xPct: 0, yPct: 0 },
+    topRight: { xPct: 1, yPct: 0 },
+    bottomRight: { xPct: 1, yPct: 1 },
+    bottomLeft: { xPct: 0, yPct: 1 },
+  };
+
+  const layoutPix: CornerQuad = {
+    topLeft: { x: lc.topLeft.xPct * maxX, y: lc.topLeft.yPct * maxY },
+    topRight: { x: lc.topRight.xPct * maxX, y: lc.topRight.yPct * maxY },
+    bottomRight: { x: lc.bottomRight.xPct * maxX, y: lc.bottomRight.yPct * maxY },
+    bottomLeft: { x: lc.bottomLeft.xPct * maxX, y: lc.bottomLeft.yPct * maxY },
+  };
+
+  const Hphoto = computeHomography(corners);
+  const Hlayout = computeHomography(layoutPix);
 
   for (let y = 0; y < outHeight; y++) {
-    const v = y / maxV;
     for (let x = 0; x < outWidth; x++) {
-      const u = x / maxU;
-      const src = toPixel(homography, u, v);
+      const { u, v } = inverseToUnit(Hlayout, x, y);
+      const src = toPixel(Hphoto, u, v);
       out[y * outWidth + x] = Math.round(sampleBilinear(gray, width, height, src.x, src.y));
     }
   }

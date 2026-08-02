@@ -1,7 +1,10 @@
 export const colors = {
   bgCream: '#f4f2f2',
   bgPink: '#ffe4e4',
+  /** UI charcoal — not for print fiducials/bubbles (use `printInk`). */
   dark: '#383838',
+  /** Pure black for printed OMR (ArUco + bubble rings) — maximizes scanner contrast. */
+  printInk: '#000000',
   grayLight: '#f4f2f2',
   white: '#ffffff',
 

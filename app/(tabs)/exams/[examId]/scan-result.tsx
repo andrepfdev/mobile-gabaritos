@@ -23,6 +23,28 @@ import {
 
 type PixelPoint = { x: number; y: number };
 
+type ErrorDebug = {
+  forUri: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  corners?: Partial<{
+    topLeft: PixelPoint;
+    topRight: PixelPoint;
+    bottomLeft: PixelPoint;
+    bottomRight: PixelPoint;
+  }>;
+  message: string;
+  motor?: string;
+  code?: string;
+  markersFound?: number[];
+};
+
+type ScanSuccess = {
+  forUri: string;
+  answers: ScanAnswers;
+  debug: ScanDebugInfo;
+};
+
 function LegendItem({ color, borderColor, label }: { color: string; borderColor?: string; label: string }) {
   return (
     <View style={styles.legendRow}>
@@ -44,35 +66,39 @@ export default function ScanResult() {
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
 
-  const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
-  const [answers, setAnswers] = useState<ScanAnswers>({});
-  const [debug, setDebug] = useState<ScanDebugInfo | null>(null);
-  const [errorDebug, setErrorDebug] = useState<{
-    imageWidth?: number;
-    imageHeight?: number;
-    corners?: Partial<{ topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }>;
-    message: string;
-  } | null>(null);
+  const [success, setSuccess] = useState<ScanSuccess | null>(null);
+  const [errorDebug, setErrorDebug] = useState<ErrorDebug | null>(null);
 
   useEffect(() => {
     if (!exam || !answerKey || !photoUri) return;
     let cancelled = false;
-    setStatus('loading');
-    setErrorDebug(null);
     const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
     analyzeGabarito(photoUri, layout)
       .then((result) => {
         if (cancelled) return;
-        setAnswers(result.answers);
-        setDebug(result.debug);
-        setStatus('done');
+        setSuccess({ forUri: photoUri, answers: result.answers, debug: result.debug });
+        setErrorDebug(null);
       })
       .catch((error) => {
         if (cancelled) return;
         if (error instanceof GabaritoScanError) {
-          setErrorDebug({ imageWidth: error.imageWidth, imageHeight: error.imageHeight, corners: error.corners, message: error.message });
+          setErrorDebug({
+            forUri: photoUri,
+            imageWidth: error.imageWidth,
+            imageHeight: error.imageHeight,
+            corners: error.corners,
+            message: error.message,
+            motor: error.motor,
+            code: error.code,
+            markersFound: error.markersFound,
+          });
+        } else {
+          setErrorDebug({
+            forUri: photoUri,
+            message: error instanceof Error ? error.message : 'Falha desconhecida na leitura.',
+          });
         }
-        setStatus('error');
+        setSuccess(null);
       });
     return () => {
       cancelled = true;
@@ -92,6 +118,10 @@ export default function ScanResult() {
     );
   }
 
+  // Derive status from whether success/error match the current photo — no sync setState in effect.
+  const status =
+    errorDebug?.forUri === photoUri ? 'error' : success?.forUri === photoUri ? 'done' : 'loading';
+
   if (status === 'loading') {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
@@ -110,13 +140,12 @@ export default function ScanResult() {
             Não foi possível ler o gabarito
           </Text>
           <Text variant="body" color={colors.textMuted} style={styles.errorSubtitle}>
-            Enquadre as 4 marcas de canto, use fundo claro e boa iluminação — sem teclado ou objetos escuros atrás.
+            {errorDebug?.motor === 'OpenCV-ArUco' || errorDebug?.message?.includes('OpenCV')
+              ? 'O motor OpenCV precisa ver as 4 marcas ArUco da grade (cantos). Reenquadre, evite reflexo e escaneie de novo.'
+              : 'Enquadre as 4 marcas ArUco de canto, use fundo claro e boa iluminação — sem teclado ou objetos escuros atrás.'}
           </Text>
           <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
 
-          {/* TEMPORARY diagnostic block — same reasoning as the one below for a successful scan,
-              but for the failure path: without this we'd have zero visibility into *why* corner
-              detection failed or looked implausible on a given photo. */}
           {errorDebug ? (
             <Card variant="grayLight" style={styles.debugCard}>
               <Text variant="body" weight="bold">
@@ -124,6 +153,13 @@ export default function ScanResult() {
               </Text>
               <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
                 {errorDebug.message}
+              </Text>
+              <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+                {`motor=${errorDebug.motor ?? '?'} · code=${errorDebug.code ?? '?'}${
+                  errorDebug.markersFound?.length
+                    ? ` · IDs=[${errorDebug.markersFound.join(', ')}]`
+                    : ''
+                }`}
               </Text>
               {errorDebug.imageWidth ? (
                 <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
@@ -147,12 +183,14 @@ export default function ScanResult() {
     );
   }
 
-  const { correctCount, wrongCount, scorePercent } = scoreAgainstAnswerKey(
+  const answers = success!.answers;
+  const debug = success!.debug;
+  const { correctCount, wrongCount, blankCount, scorePercent } = scoreAgainstAnswerKey(
     answers,
     answerKey.answers,
     exam.questionCount,
   );
-  const isAmbiguous = unansweredRatio(answers, exam.questionCount) > AMBIGUOUS_RATIO_THRESHOLD;
+  const isAmbiguous = unansweredRatio(answers, exam.questionCount) >= AMBIGUOUS_RATIO_THRESHOLD;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -164,7 +202,7 @@ export default function ScanResult() {
         {isAmbiguous ? (
           <Card variant="pink" style={styles.card}>
             <Text variant="body" weight="medium">
-              Leitura incompleta — várias bolhas ficaram sem marcação clara. Escaneie de novo com as 4 marcas no guia e luz uniforme (não edite manualmente).
+              Leitura ambígua (~10%+ sem marca clara ou com dupla marcação). Escaneie de novo com as 4 marcas ArUco no guia e luz uniforme — não edite a nota manualmente.
             </Text>
             <View style={{ marginTop: spacing.sm }}>
               <PillButton title="Escanear novamente" variant="accent" onPress={onScanAgain} />
@@ -177,6 +215,7 @@ export default function ScanResult() {
         <ScrollView horizontal contentContainerStyle={styles.summaryRow}>
           <StatCard variant="light" value={String(correctCount)} label="Acertos" />
           <StatCard variant="grayLight" value={String(wrongCount)} label="Erros" />
+          <StatCard variant="grayLight" value={String(blankCount)} label="Em branco" />
         </ScrollView>
 
         <Text variant="h2" weight="bold" style={styles.sectionTitle}>
@@ -208,7 +247,10 @@ export default function ScanResult() {
               Diagnóstico (temporário)
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px`}
+              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px · flip=${debug.flipMode} · motor=${debug.motor}`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`ArUco IDs: [${(debug.arucoIds ?? []).join(', ')}] · score=${Number(debug.arucoScore ?? 0).toFixed(2)}`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
               {`Cantos: TL(${Math.round(debug.corners.topLeft.x)},${Math.round(debug.corners.topLeft.y)}) TR(${Math.round(debug.corners.topRight.x)},${Math.round(debug.corners.topRight.y)}) BL(${Math.round(debug.corners.bottomLeft.x)},${Math.round(debug.corners.bottomLeft.y)}) BR(${Math.round(debug.corners.bottomRight.x)},${Math.round(debug.corners.bottomRight.y)})`}

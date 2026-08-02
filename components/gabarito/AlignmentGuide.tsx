@@ -10,29 +10,38 @@ export type AlignmentGuideProps = {
 };
 
 /**
- * Visual guide overlaid on the camera preview so the teacher aligns the printed ArUco corner
- * markers before capturing. Perspective correction runs after capture (warp → ROI sampling).
+ * Visual guide overlaid on the camera — frames the OMR block (ArUco quad), not the header.
  */
 export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuideProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const maxWidth = screenWidth * 0.82;
-  // When embedded between chrome, keep the frame fully visible and easy to aim.
   const maxHeight = fillParent ? screenHeight * 0.5 : screenHeight * 0.55;
 
+  const omrTop = Math.min(layout.corners.topLeft.yPct, layout.corners.topRight.yPct);
+  const omrBottom = Math.max(layout.corners.bottomLeft.yPct, layout.corners.bottomRight.yPct);
+  const omrLeft = Math.min(layout.corners.topLeft.xPct, layout.corners.bottomLeft.xPct);
+  const omrRight = Math.max(layout.corners.topRight.xPct, layout.corners.bottomRight.xPct);
+  const omrHeightFrac = Math.max(0.05, omrBottom - omrTop);
+  const omrWidthFrac = Math.max(0.05, omrRight - omrLeft);
+  // Sheet aspect is width/height; OMR sub-rect aspect = (w*omrW) / (h*omrH) = aspect * omrW / omrH
+  const omrAspect = (layout.aspectRatio * omrWidthFrac) / omrHeightFrac;
+
   let guideWidth = maxWidth;
-  let guideHeight = guideWidth / layout.aspectRatio;
+  let guideHeight = guideWidth / omrAspect;
   if (guideHeight > maxHeight) {
     guideHeight = maxHeight;
-    guideWidth = guideHeight * layout.aspectRatio;
+    guideWidth = guideHeight * omrAspect;
   }
 
-  const markSize = layout.cornerMarkSizePct * guideWidth;
+  const markSize = layout.cornerMarkSizePct * (guideWidth / omrWidthFrac);
 
   return (
     <View pointerEvents="none" style={fillParent ? styles.slotWrap : styles.screenWrap}>
       <View style={[styles.guide, { width: guideWidth, height: guideHeight }]}>
         {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const).map((corner) => {
           const point = layout.corners[corner];
+          const x = ((point.xPct - omrLeft) / omrWidthFrac) * guideWidth;
+          const y = ((point.yPct - omrTop) / omrHeightFrac) * guideHeight;
           return (
             <View
               key={corner}
@@ -41,8 +50,8 @@ export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuidePro
                 {
                   width: markSize,
                   height: markSize,
-                  left: point.xPct * guideWidth - markSize / 2,
-                  top: point.yPct * guideHeight - markSize / 2,
+                  left: x - markSize / 2,
+                  top: y - markSize / 2,
                 },
               ]}
             />
@@ -55,7 +64,11 @@ export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuidePro
 
 const styles = StyleSheet.create({
   screenWrap: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

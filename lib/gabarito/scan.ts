@@ -1,39 +1,60 @@
-import { Image } from 'react-native';
-import { GLView } from 'expo-gl';
-import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import { GabaritoLayout } from './layout';
-import { findCornerMarks } from './omr/corners';
+import { findCornerMarksScored } from './omr/corners';
 import {
   BubbleRowDebug,
   ScanAnswers,
   readBubblesOnCanonical,
-  scoreAgainstAnswerKey,
   unansweredRatio,
+  scoreAgainstAnswerKey,
 } from './omr/bubbles';
 import { CornerQuad, warpToCanonical } from './omr/geometry';
+import { flipGrayX, flipGrayY, loadGrayImage } from './omr/loadGray';
+import {
+  detectAndWarpNativeOmr,
+  isNativeArucoAvailable,
+  NativeArucoMotor,
+  NativeOmrError,
+} from './omr/nativeAruco';
 
 export { unansweredRatio, scoreAgainstAnswerKey };
 export type { ScanAnswers };
-export const AMBIGUOUS_RATIO_THRESHOLD = 0.35;
+/** Fraction of blank answers at/above which UI asks for rescan (~10%). */
+export const AMBIGUOUS_RATIO_THRESHOLD = 0.1;
 
 const CANONICAL_WIDTH = 1000;
+const FLIP_MODES: ScanFlipMode[] = ['none', 'x', 'y', 'xy'];
 
 export class GabaritoScanError extends Error {
   imageWidth?: number;
   imageHeight?: number;
   corners?: Partial<CornerQuad>;
+  motor?: NativeArucoMotor;
+  code?: string;
+  markersFound?: number[];
 
   constructor(
     message: string,
-    info?: { imageWidth: number; imageHeight: number; corners: GabaritoScanError['corners'] },
+    info?: {
+      imageWidth?: number;
+      imageHeight?: number;
+      corners?: GabaritoScanError['corners'];
+      motor?: NativeArucoMotor;
+      code?: string;
+      markersFound?: number[];
+    },
   ) {
     super(message);
     this.name = 'GabaritoScanError';
     this.imageWidth = info?.imageWidth;
     this.imageHeight = info?.imageHeight;
     this.corners = info?.corners;
+    this.motor = info?.motor;
+    this.code = info?.code;
+    this.markersFound = info?.markersFound;
   }
 }
+
+export type ScanFlipMode = 'none' | 'x' | 'y' | 'xy';
 
 export type ScanDebugInfo = {
   imageWidth: number;
@@ -43,101 +64,204 @@ export type ScanDebugInfo = {
   sampleSize: number;
   corners: CornerQuad;
   rows: BubbleRowDebug[];
+  /** @deprecated use flipMode */
+  flippedY: boolean;
+  flipMode: ScanFlipMode;
+  motor: NativeArucoMotor;
+  arucoIds: number[];
+  arucoScore: number;
 };
 
-function getImageSize(uri: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
-  });
+type PipelineHit = {
+  answers: ScanAnswers;
+  rows: BubbleRowDebug[];
+  corners: CornerQuad;
+  canonicalHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+  flipMode: ScanFlipMode;
+  arucoScore: number;
+  arucoIds: number[];
+  motor: NativeArucoMotor;
+};
+
+function applyFlip(gray: Uint8Array, width: number, height: number, flipMode: ScanFlipMode): Uint8Array {
+  if (flipMode === 'none') return gray;
+  if (flipMode === 'x') return flipGrayX(gray, width, height);
+  if (flipMode === 'y') return flipGrayY(gray, width, height);
+  return flipGrayY(flipGrayX(gray, width, height), width, height);
 }
 
-function readGrayPixels(
-  gl: ExpoWebGLRenderingContext,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): Uint8Array {
-  const rgba = new Uint8Array(w * h * 4);
-  gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
-  const gray = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const r = rgba[i * 4];
-    const g = rgba[i * 4 + 1];
-    const b = rgba[i * 4 + 2];
-    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+/** Approximate CLAHE: stretch luminance using p5–p95 (JS fallback path only). */
+function equalizeGrayRough(gray: Uint8Array): Uint8Array {
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+  const total = gray.length;
+  let acc = 0;
+  let lo = 0;
+  let hi = 255;
+  const pLo = total * 0.05;
+  const pHi = total * 0.95;
+  for (let i = 0; i < 256; i++) {
+    acc += hist[i];
+    if (acc >= pLo && lo === 0) lo = i;
+    if (acc >= pHi) {
+      hi = i;
+      break;
+    }
   }
-  return gray;
+  const span = Math.max(1, hi - lo);
+  const out = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) {
+    out[i] = Math.max(0, Math.min(255, Math.round(((gray[i] - lo) * 255) / span)));
+  }
+  return out;
 }
 
-async function loadGrayImage(photoUri: string): Promise<{ gray: Uint8Array; width: number; height: number }> {
-  const { width, height } = await getImageSize(photoUri);
-  const gl = await GLView.createContextAsync();
-  const texture = gl.createTexture();
-  const framebuffer = gl.createFramebuffer();
+async function analyzeWithOpenCv(photoUri: string, layout: GabaritoLayout): Promise<PipelineHit> {
+  const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
+  const hit = await detectAndWarpNativeOmr(photoUri, CANONICAL_WIDTH, canonicalHeight, layout.corners);
 
-  try {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    (gl.texImage2D as (...args: unknown[]) => void)(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, {
-      localUri: photoUri,
-    });
+  const { answers, rows } = readBubblesOnCanonical(
+    hit.warpedGray,
+    hit.warpedWidth,
+    hit.warpedHeight,
+    layout,
+  );
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-    gl.viewport(0, 0, width, height);
+  return {
+    answers,
+    rows,
+    corners: hit.corners,
+    canonicalHeight: hit.warpedHeight,
+    imageWidth: hit.detectWidth,
+    imageHeight: hit.detectHeight,
+    flipMode: hit.flipMode,
+    arucoScore: hit.score,
+    arucoIds: hit.ids,
+    motor: 'OpenCV-ArUco',
+  };
+}
 
-    const gray = readGrayPixels(gl, 0, 0, width, height);
-    return { gray, width, height };
-  } finally {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.deleteFramebuffer(framebuffer);
-    gl.deleteTexture(texture);
-    await GLView.destroyContextAsync(gl);
+function analyzeWithJsAruco(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  layout: GabaritoLayout,
+): PipelineHit | null {
+  let best: PipelineHit | null = null;
+  const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
+
+  for (const flipMode of FLIP_MODES) {
+    const flipped = applyFlip(gray, width, height, flipMode);
+    const found = findCornerMarksScored(flipped, width, height);
+    if (!found) continue;
+
+    const canonical = warpToCanonical(
+      flipped,
+      width,
+      height,
+      found.corners,
+      CANONICAL_WIDTH,
+      canonicalHeight,
+      layout.corners,
+    );
+    // Cheap illumination flatten (native path uses OpenCV CLAHE on the warped Mat).
+    const normalized = equalizeGrayRough(canonical);
+    const { answers, rows } = readBubblesOnCanonical(
+      normalized,
+      CANONICAL_WIDTH,
+      canonicalHeight,
+      layout,
+    );
+    const pipeline: PipelineHit = {
+      answers,
+      rows,
+      corners: found.corners,
+      canonicalHeight,
+      imageWidth: width,
+      imageHeight: height,
+      flipMode,
+      arucoScore: found.score,
+      arucoIds: found.ids,
+      motor: 'JS-ArUco',
+    };
+    if (!best || pipeline.arucoScore > best.arucoScore) best = pipeline;
   }
+
+  return best;
 }
 
 /**
  * Canonical OMR pipeline:
- * 1) load grayscale photo
- * 2) find 4 fiducial squares/ArUco boxes by shape
- * 3) warp to a flat canonical sheet
- * 4) sample bubbles at layout ROIs with relative (z-score) classification
+ * 1) Android+OpenCV: native detect (CLAHE/SUBPIX) + warpPerspective → bubbles on same buffer
+ * 2) Else (web/sim): JS ArUco 4/4 + JS warp
+ * 3) Flip chosen by ArUco quality; missing 4/4 → explicit typed rescan error
  */
 export async function analyzeGabarito(
   photoUri: string,
   layout: GabaritoLayout,
 ): Promise<{ answers: ScanAnswers; debug: ScanDebugInfo }> {
-  const { gray, width, height } = await loadGrayImage(photoUri);
+  const preferNative = isNativeArucoAvailable();
 
-  const corners = findCornerMarks(gray, width, height);
-  if (!corners) {
-    throw new GabaritoScanError(
-      'Não foi possível localizar as 4 marcas de canto. Enquadre a folha inteira, com boa luz e sem objetos escuros atrás.',
-      { imageWidth: width, imageHeight: height, corners: undefined },
-    );
+  let best: PipelineHit | null = null;
+
+  if (preferNative) {
+    try {
+      best = await analyzeWithOpenCv(photoUri, layout);
+    } catch (error) {
+      if (error instanceof NativeOmrError) {
+        throw new GabaritoScanError(
+          error.code === 'incomplete_markers'
+            ? `${error.message} Reenquadre a grade com as marcas nos cantos, boa luz e sem reflexo — e escaneie de novo.`
+            : error.message,
+          {
+            imageWidth: error.imageWidth,
+            imageHeight: error.imageHeight,
+            corners: undefined,
+            motor: 'OpenCV-ArUco',
+            code: error.code,
+            markersFound: error.markersFound,
+          },
+        );
+      }
+      throw new GabaritoScanError(
+        error instanceof Error ? error.message : 'Falha desconhecida no OpenCV.',
+        { motor: 'OpenCV-ArUco', code: 'native_throw' },
+      );
+    }
+  } else {
+    const { gray, width, height } = await loadGrayImage(photoUri);
+    best = analyzeWithJsAruco(gray, width, height, layout);
+    if (!best) {
+      throw new GabaritoScanError(
+        'Não foi possível localizar as 4 marcas ArUco de canto. Enquadre a folha inteira, com boa luz e sem objetos escuros atrás.',
+        { imageWidth: width, imageHeight: height, corners: undefined, motor: 'JS-ArUco', code: 'incomplete_markers' },
+      );
+    }
   }
 
-  const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
-  const canonical = warpToCanonical(gray, width, height, corners, CANONICAL_WIDTH, canonicalHeight);
-  const { answers, rows } = readBubblesOnCanonical(canonical, CANONICAL_WIDTH, canonicalHeight, layout);
+  if (!best) {
+    throw new GabaritoScanError('Falha na leitura do gabarito.', { motor: preferNative ? 'OpenCV-ArUco' : 'JS-ArUco' });
+  }
 
   const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * CANONICAL_WIDTH));
 
   return {
-    answers,
+    answers: best.answers,
     debug: {
-      imageWidth: width,
-      imageHeight: height,
+      imageWidth: best.imageWidth,
+      imageHeight: best.imageHeight,
       canonicalWidth: CANONICAL_WIDTH,
-      canonicalHeight,
+      canonicalHeight: best.canonicalHeight,
       sampleSize,
-      corners,
-      rows,
+      corners: best.corners,
+      rows: best.rows,
+      flippedY: best.flipMode === 'y' || best.flipMode === 'xy',
+      flipMode: best.flipMode,
+      motor: best.motor,
+      arucoIds: best.arucoIds,
+      arucoScore: best.arucoScore,
     },
   };
 }

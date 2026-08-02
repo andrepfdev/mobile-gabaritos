@@ -13,7 +13,9 @@ type ArucoMarkerProps = {
 /** Renders an OpenCV-compatible DICT_4X4 ArUco marker as a grid of Views (print-safe, no fonts). */
 export function ArucoMarker({ id, size, left, top }: ArucoMarkerProps) {
   const grid = useMemo(() => arucoGridWithBorder(id), [id]);
-  const module = size / grid.length;
+  const n = grid.length;
+  // Floor module size — no +0.5 overlap that bleeds modules together on print.
+  const module = size / n;
 
   return (
     <View style={[styles.wrap, { width: size, height: size, left, top }]}>
@@ -25,9 +27,9 @@ export function ArucoMarker({ id, size, left, top }: ArucoMarkerProps) {
               position: 'absolute',
               left: c * module,
               top: r * module,
-              width: module + 0.5,
-              height: module + 0.5,
-              backgroundColor: bit ? colors.white : colors.dark,
+              width: module,
+              height: module,
+              backgroundColor: bit ? colors.white : colors.printInk,
             }}
           />
         )),

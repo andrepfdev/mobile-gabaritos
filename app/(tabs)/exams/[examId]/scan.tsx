@@ -12,6 +12,7 @@ import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
+import { gateCaptureAruco } from '../../../../lib/gabarito/omr/captureGate';
 
 export default function ScanGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -55,16 +56,26 @@ export default function ScanGabarito() {
       // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
       // without this, Skia's raw decode can read the image sideways relative to what the
       // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
+      // Resize for memory; keep JPEG near-lossless so ArUco modules survive re-encode.
+      // Single JPEG encode (bake EXIF + resize). loadGray reads bytes without re-encoding.
       const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
-        compress: 0.9,
+        compress: 1,
         format: SaveFormat.JPEG,
       });
+
+      const gate = await gateCaptureAruco(normalized.uri);
+      if (!gate.ok) {
+        Alert.alert('Marcas ArUco incompletas', `${gate.reason}\n\nAjuste o enquadramento e capture de novo.`);
+        return;
+      }
+
       setPhotoUri(normalized.uri);
       router.push(`/exams/${examId}/scan-result`);
-    } catch {
-      // Without this, a failed capture/normalize silently left the teacher stuck on the camera
-      // screen with no feedback at all — always surface something instead of failing silently.
-      Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
+    } catch (error) {
+      Alert.alert(
+        'Não foi possível capturar a foto',
+        error instanceof Error ? error.message : 'Tente novamente.',
+      );
     } finally {
       setCapturing(false);
     }
@@ -124,10 +135,13 @@ export default function ScanGabarito() {
 
         <View style={styles.footer}>
           <Text variant="caption" color={colors.white} style={styles.hint}>
-            Enquadre as 4 marcas de canto no guia. Fundo liso, boa luz, sem teclado atrás da folha.
+            Caneta preta ou azul. Prefira preencher bem o círculo (aceita preenchimento parcial).
+            Enquadre as 4 marcas ArUco, fundo claro, luz uniforme — sem teclado atrás.
           </Text>
           <PillButton
-            title={capturing ? 'Capturando...' : codeVerified ? 'Capturar' : 'Aguardando QR da prova'}
+            title={
+              capturing ? 'Validando marcas...' : codeVerified ? 'Capturar e ler' : 'Aguardando QR da prova'
+            }
             variant="accent"
             onPress={onCapture}
             disabled={!codeVerified || capturing}

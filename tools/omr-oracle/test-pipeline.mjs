@@ -8,29 +8,39 @@
 
 const CORNER_INSET = 0.04;
 const MARK = 0.05;
-const HEADER = 0.115;
-const GRID_TOP_GAP = 0.02;
-const ROW_H = 0.082;
-const BOTTOM = CORNER_INSET + MARK;
+const HEADER = 0.125;
+const HEADER_OMR_GAP = 0.028;
+const GRID_TOP_GAP = 0.028;
+const ROW_H = 0.09;
 const LABEL_RATIO = 0.09;
 const PITCH = 2.2;
 const BUBBLE_H = 0.85;
 const PAD = 0.02;
+const COLUMN_GAP = 0.04;
+const MAX_ROWS_PER_COLUMN = 25;
 
 function buildLayout(questionCount, options = ['A', 'B', 'C', 'D', 'E']) {
-  const columnWidthW = 1 - 2 * CORNER_INSET;
+  const columns = questionCount > MAX_ROWS_PER_COLUMN ? 2 : 1;
+  const rowsPerColumn = Math.ceil(questionCount / columns);
+  const columnWidthW = (1 - 2 * CORNER_INSET - (columns - 1) * COLUMN_GAP) / columns;
   const labelWidthW = columnWidthW * LABEL_RATIO;
   const maxD = (columnWidthW - labelWidthW) / ((options.length - 1) * PITCH + 1);
   const bubbleD = Math.min(ROW_H * BUBBLE_H, maxD);
   const bubbleR = bubbleD / 2;
   const pitch = bubbleD * PITCH;
-  const gridTop = HEADER + GRID_TOP_GAP;
-  const totalH = gridTop + questionCount * ROW_H + BOTTOM;
+  const markHalf = MARK / 2;
+  const topCorner = HEADER + HEADER_OMR_GAP + markHalf;
+  const gridTop = topCorner + markHalf + GRID_TOP_GAP;
+  const bottomCorner = gridTop + rowsPerColumn * ROW_H + GRID_TOP_GAP + markHalf;
+  const totalH = bottomCorner + markHalf + HEADER_OMR_GAP;
   const toY = (v) => v / totalH;
   const rows = [];
   for (let q = 1; q <= questionCount; q++) {
-    const rowCenter = gridTop + (q - 1) * ROW_H + ROW_H / 2;
-    const groupLeft = CORNER_INSET + columnWidthW * PAD;
+    const columnIndex = Math.floor((q - 1) / rowsPerColumn);
+    const rowIndex = (q - 1) % rowsPerColumn;
+    const columnLeft = CORNER_INSET + columnIndex * (columnWidthW + COLUMN_GAP);
+    const rowCenter = gridTop + rowIndex * ROW_H + ROW_H / 2;
+    const groupLeft = columnLeft + columnWidthW * PAD;
     const optionsLeft = groupLeft + labelWidthW;
     rows.push({
       question: q,
@@ -45,10 +55,10 @@ function buildLayout(questionCount, options = ['A', 'B', 'C', 'D', 'E']) {
     aspectRatio: 1 / totalH,
     bubbleRadiusPct: bubbleR,
     corners: {
-      topLeft: { xPct: CORNER_INSET, yPct: toY(CORNER_INSET) },
-      topRight: { xPct: 1 - CORNER_INSET, yPct: toY(CORNER_INSET) },
-      bottomLeft: { xPct: CORNER_INSET, yPct: toY(totalH - CORNER_INSET) },
-      bottomRight: { xPct: 1 - CORNER_INSET, yPct: toY(totalH - CORNER_INSET) },
+      topLeft: { xPct: CORNER_INSET, yPct: toY(topCorner) },
+      topRight: { xPct: 1 - CORNER_INSET, yPct: toY(topCorner) },
+      bottomLeft: { xPct: CORNER_INSET, yPct: toY(bottomCorner) },
+      bottomRight: { xPct: 1 - CORNER_INSET, yPct: toY(bottomCorner) },
     },
     rows,
   };
@@ -80,10 +90,6 @@ function computeHomography(c) {
 function toPixel(H, u, v) {
   const w = H.g * u + H.h * v + 1;
   return { x: (H.a * u + H.b * v + H.c) / w, y: (H.d * u + H.e * v + H.f) / w };
-}
-
-function normalize(v, min, max) {
-  return (v - min) / (max - min);
 }
 
 function paintSquare(gray, w, h, cx, cy, size, value) {
@@ -304,8 +310,7 @@ function findCorners(gray, width, height) {
       const minDim = Math.min(width, height);
       if (aspect < 0.45 || aspect > 2.2) continue;
       if (bw < minDim * 0.015 || bh < minDim * 0.015 || bw > minDim * 0.12) continue;
-      if (fill < 0.22 || fill > 0.97) continue;
-      if (fill > 0.73 && fill < 0.87) continue;
+      if (fill < 0.2 || fill > 0.98) continue;
       candidates.push({
         center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
         size: (bw + bh) / 2,
@@ -314,6 +319,110 @@ function findCorners(gray, width, height) {
     }
   }
   if (candidates.length < 4) return null;
+
+  // ArUco ID decode (same idea as lib/gabarito/omr/aruco.ts)
+  const rotate90 = (g) => {
+    const n = g.length;
+    const o = Array.from({ length: n }, () => Array(n).fill(0));
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) o[c][n - 1 - r] = g[r][c];
+    return o;
+  };
+  const decodeOne = (center, size) => {
+    const half = size / 2;
+    const left = center.x - half;
+    const top = center.y - half;
+    const module = size / 6;
+    if (module < 2) return null;
+    const inset = module * 0.22;
+    const means = Array.from({ length: 6 }, () => Array(6).fill(255));
+    const samples = [];
+    for (let r = 0; r < 6; r++)
+      for (let c = 0; c < 6; c++) {
+        let sum = 0,
+          n = 0;
+        const x0 = Math.max(0, Math.floor(left + c * module + inset));
+        const y0 = Math.max(0, Math.floor(top + r * module + inset));
+        const x1 = Math.min(width - 1, Math.ceil(left + (c + 1) * module - inset));
+        const y1 = Math.min(height - 1, Math.ceil(top + (r + 1) * module - inset));
+        for (let y = y0; y <= y1; y++)
+          for (let x = x0; x <= x1; x++) {
+            sum += gray[y * width + x];
+            n++;
+          }
+        const m = n ? sum / n : 255;
+        means[r][c] = m;
+        samples.push(m);
+      }
+    samples.sort((a, b) => a - b);
+    // ~8/36 modules are white — p75 stays in black; use p10/p90.
+    const darkRef = samples[Math.floor(samples.length * 0.1)];
+    const lightRef = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.9))];
+    if (lightRef - darkRef < 25) return null;
+    const thr = (darkRef + lightRef) / 2;
+    const bits = means.map((row) => row.map((v) => (v >= thr ? 1 : 0)));
+    let borderBlack = 0,
+      borderTotal = 0;
+    for (let i = 0; i < 6; i++) {
+      for (const b of [bits[0][i], bits[5][i], bits[i][0], bits[i][5]]) {
+        borderTotal++;
+        if (b === 0) borderBlack++;
+      }
+    }
+    if (borderBlack / borderTotal < 0.75) return null;
+    const inner = [];
+    for (let r = 0; r < 4; r++) inner.push([bits[r + 1][1], bits[r + 1][2], bits[r + 1][3], bits[r + 1][4]]);
+    let bestId = -1,
+      bestScore = -1;
+    for (const [idStr, pattern] of Object.entries(ARUCO_INNER)) {
+      let g = pattern;
+      for (let rot = 0; rot < 4; rot++) {
+        let match = 0;
+        for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) if (inner[r][c] === g[r][c]) match++;
+        if (match > bestScore) {
+          bestScore = match;
+          bestId = Number(idStr);
+        }
+        g = rotate90(g);
+      }
+    }
+    if (bestId < 0 || bestScore < 14) return null;
+    return { id: bestId, center, score: bestScore / 16 };
+  };
+  const byId = new Map();
+  const remember = (hit) => {
+    if (!hit) return;
+    const prev = byId.get(hit.id);
+    if (!prev || hit.score > prev.score) byId.set(hit.id, hit);
+  };
+  for (const c of candidates) {
+    for (const scale of [0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.35]) {
+      remember(decodeOne(c.center, c.size * scale));
+    }
+  }
+  // Seeds cover header-below marks (top ~10–22% of height), not only image corners.
+  const minDim = Math.min(width, height);
+  const mark = minDim * 0.05;
+  const insetX = minDim * 0.045;
+  const seedYs = [0.05, 0.1, 0.14, 0.18, 0.22, 0.78, 0.84, 0.9, 0.95].map((f) => height * f);
+  for (const y of seedYs) {
+    for (const x of [insetX, width - insetX]) {
+      for (const dx of [-4, 0, 4]) {
+        for (const dy of [-4, 0, 4]) {
+          for (const scale of [0.85, 0.95, 1.0, 1.1, 1.2]) {
+            remember(decodeOne({ x: x + dx, y: y + dy }, mark * scale));
+          }
+        }
+      }
+    }
+  }
+  if (byId.has(0) && byId.has(1) && byId.has(2) && byId.has(3)) {
+    return {
+      topLeft: byId.get(0).center,
+      topRight: byId.get(1).center,
+      bottomRight: byId.get(2).center,
+      bottomLeft: byId.get(3).center,
+    };
+  }
 
   const paper = findPaperExtremes(gray, width, height);
   const minSep = Math.min(width, height) * 0.18;
@@ -387,21 +496,100 @@ function findCorners(gray, width, height) {
   return best;
 }
 
-function warp(gray, width, height, corners, outW, outH) {
-  const H = computeHomography(corners);
+function inverseToUnit(H, x, y) {
+  let u = 0.5;
+  let v = 0.5;
+  for (let i = 0; i < 12; i++) {
+    const p = toPixel(H, u, v);
+    const eps = 1e-3;
+    const pu = toPixel(H, u + eps, v);
+    const pv = toPixel(H, u, v + eps);
+    const dxdu = (pu.x - p.x) / eps;
+    const dxdv = (pv.x - p.x) / eps;
+    const dydu = (pu.y - p.y) / eps;
+    const dydv = (pv.y - p.y) / eps;
+    const det = dxdu * dydv - dxdv * dydu;
+    if (Math.abs(det) < 1e-9) break;
+    u += ((x - p.x) * dydv - (y - p.y) * dxdv) / det;
+    v += (-(x - p.x) * dydu + (y - p.y) * dxdu) / det;
+  }
+  return { u, v };
+}
+
+/** Pin all 4 layout corners (parity with lib/gabarito/omr/geometry.ts). */
+function warp(gray, width, height, corners, outW, outH, layoutCorners) {
+  const maxX = outW - 1;
+  const maxY = outH - 1;
+  const layoutPix = {
+    topLeft: { x: layoutCorners.topLeft.xPct * maxX, y: layoutCorners.topLeft.yPct * maxY },
+    topRight: { x: layoutCorners.topRight.xPct * maxX, y: layoutCorners.topRight.yPct * maxY },
+    bottomRight: { x: layoutCorners.bottomRight.xPct * maxX, y: layoutCorners.bottomRight.yPct * maxY },
+    bottomLeft: { x: layoutCorners.bottomLeft.xPct * maxX, y: layoutCorners.bottomLeft.yPct * maxY },
+  };
+  const Hphoto = computeHomography(corners);
+  const Hlayout = computeHomography(layoutPix);
   const out = new Uint8Array(outW * outH);
   for (let y = 0; y < outH; y++) {
     for (let x = 0; x < outW; x++) {
-      const p = toPixel(H, x / (outW - 1), y / (outH - 1));
+      const { u, v } = inverseToUnit(Hlayout, x, y);
+      const p = toPixel(Hphoto, u, v);
       out[y * outW + x] = Math.round(sampleBilinear(gray, width, height, p.x, p.y));
     }
   }
   return out;
 }
 
+const ARUCO_INNER = {
+  0: [
+    [1, 0, 1, 1],
+    [0, 1, 0, 1],
+    [0, 0, 1, 1],
+    [0, 0, 1, 0],
+  ],
+  1: [
+    [0, 0, 0, 0],
+    [1, 1, 1, 1],
+    [1, 0, 0, 1],
+    [1, 0, 1, 0],
+  ],
+  2: [
+    [0, 0, 1, 1],
+    [0, 0, 1, 1],
+    [0, 0, 1, 0],
+    [1, 1, 0, 1],
+  ],
+  3: [
+    [1, 0, 0, 1],
+    [1, 0, 0, 1],
+    [0, 1, 0, 0],
+    [0, 1, 1, 0],
+  ],
+};
+
+function paintAruco(gray, w, h, cx, cy, size, id) {
+  const inner = ARUCO_INNER[id];
+  const half = size / 2;
+  const module = size / 6;
+  for (let r = 0; r < 6; r++) {
+    for (let c = 0; c < 6; c++) {
+      let bit = 0; // black border
+      if (r >= 1 && r <= 4 && c >= 1 && c <= 4) bit = inner[r - 1][c - 1];
+      const value = bit ? 245 : 20;
+      const x0 = Math.max(0, Math.round(cx - half + c * module));
+      const y0 = Math.max(0, Math.round(cy - half + r * module));
+      const x1 = Math.min(w - 1, Math.round(cx - half + (c + 1) * module));
+      const y1 = Math.min(h - 1, Math.round(cy - half + (r + 1) * module));
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) gray[y * w + x] = value;
+    }
+  }
+}
+
+/** Mirrors lib/gabarito/omr/bubbles.ts (priority A: light/partial ink). */
 function scoreBubble(gray, width, height, cx0, cy0, radius, searchRadius) {
   const step = Math.max(2, Math.round(searchRadius / 3));
   let bestFill = -1;
+  let bestOmr = 0;
+  let bestGray = 255;
   for (let dy = -searchRadius; dy <= searchRadius; dy += step) {
     for (let dx = -searchRadius; dx <= searchRadius; dx += step) {
       if (dx * dx + dy * dy > searchRadius * searchRadius) continue;
@@ -411,54 +599,112 @@ function scoreBubble(gray, width, height, cx0, cy0, radius, searchRadius) {
       const paper = [];
       const r = Math.max(2, Math.round(radius));
       const r2 = r * r;
-      const in2 = (r * 1.15) * (r * 1.15);
-      const out2 = (r * 1.75) * (r * 1.75);
-      for (let y = Math.floor(cy - r * 1.75); y <= Math.ceil(cy + r * 1.75); y++) {
-        for (let x = Math.floor(cx - r * 1.75); x <= Math.ceil(cx + r * 1.75); x++) {
+      const in2 = r * 1.15 * (r * 1.15);
+      const out2 = r * 1.9 * (r * 1.9);
+      for (let y = Math.floor(cy - r * 1.9); y <= Math.ceil(cy + r * 1.9); y++) {
+        for (let x = Math.floor(cx - r * 1.9); x <= Math.ceil(cx + r * 1.9); x++) {
           if (x < 0 || y < 0 || x >= width || y >= height) continue;
           const d = (x - cx) * (x - cx) + (y - cy) * (y - cy);
           if (d <= r2) vals.push(gray[y * width + x]);
           else if (d > in2 && d <= out2) paper.push(gray[y * width + x]);
         }
       }
-      if (!vals.length) continue;
+      if (vals.length < 8) continue;
+      const pap = paper.length ? paper.reduce((a, b) => a + b, 0) / paper.length : 245;
+      const thr = Math.min(210, Math.max(100, pap - 18));
+      let dark = 0;
+      let sum = 0;
+      for (const v of vals) {
+        sum += v;
+        if (v < thr) dark++;
+      }
+      const omrRatio = dark / vals.length;
       vals.sort((a, b) => a - b);
       const n = Math.max(1, Math.round(vals.length * 0.35));
-      let s = 0;
-      for (let i = 0; i < n; i++) s += vals[i];
-      const inner = s / n;
-      const pap = paper.length ? paper.reduce((a, b) => a + b, 0) / paper.length : 245;
-      const fill = Math.max(0, Math.min(1, (pap - inner) / 255));
-      if (fill > bestFill) bestFill = fill;
+      let coreSum = 0;
+      for (let i = 0; i < n; i++) coreSum += vals[i];
+      const core = coreSum / n;
+      const coreDark = (255 - core) / 255;
+      const contrast = Math.max(0, (pap - core) / 255);
+      const softDensity = Math.max(0, Math.min(1, (pap - core) / 55));
+      const fill = Math.max(
+        0,
+        Math.min(1, 0.32 * omrRatio + 0.28 * coreDark + 0.22 * contrast + 0.18 * softDensity),
+      );
+      if (fill > bestFill) {
+        bestFill = fill;
+        bestOmr = omrRatio;
+        bestGray = core;
+      }
     }
   }
-  return Math.max(0, bestFill);
+  return { fill: Math.max(0, bestFill), omr: bestOmr, gray: bestGray };
 }
 
 function readAnswers(gray, width, height, layout, key) {
-  const uMin = layout.corners.topLeft.xPct;
-  const uMax = layout.corners.topRight.xPct;
-  const vMin = layout.corners.topLeft.yPct;
-  const vMax = layout.corners.bottomLeft.yPct;
-  const radius = layout.bubbleRadiusPct * width * 0.62;
+  const radius = layout.bubbleRadiusPct * width * 0.55;
   const pitch = layout.bubbleRadiusPct * 2 * 2.2 * width;
-  const search = pitch * 0.28;
-  let correct = 0;
-  const got = [];
+  const search = pitch * 0.12;
+  const allOmr = [];
+  const allFills = [];
+  const rows = [];
   for (const row of layout.rows) {
-    const fills = row.options.map((b) => {
-      const cx = normalize(b.xPct, uMin, uMax) * (width - 1);
-      const cy = normalize(b.yPct, vMin, vMax) * (height - 1);
+    const scored = row.options.map((b) => {
+      const cx = b.xPct * (width - 1);
+      const cy = b.yPct * (height - 1);
       return scoreBubble(gray, width, height, cx, cy, radius, search);
     });
+    rows.push({ row, scored });
+    for (const s of scored) {
+      allOmr.push(s.omr);
+      allFills.push(s.fill);
+    }
+  }
+  const sortedOmr = allOmr.slice().sort((a, b) => a - b);
+  const sortedFills = allFills.slice().sort((a, b) => a - b);
+  const emptyP90 = sortedOmr[Math.floor(sortedOmr.length * 0.9)] ?? 0;
+  const fillP50 = sortedFills[Math.floor(sortedFills.length * 0.5)] ?? 0;
+  const fillP85 = sortedFills[Math.floor(sortedFills.length * 0.85)] ?? 0;
+  const markOmr = Math.max(0.12, Math.min(0.22, emptyP90 + 0.07));
+  const minMarkFill = Math.max(0.08, Math.min(0.2, fillP50 + 0.04));
+  const softFillFloor = Math.max(0.1, fillP85 * 0.55);
+
+  let correct = 0;
+  const got = [];
+  for (const { row, scored } of rows) {
+    const fills = scored.map((s) => s.fill);
+    const omrRatios = scored.map((s) => s.omr);
+    const grays = scored.map((s) => s.gray);
     let best = 0;
     for (let i = 1; i < fills.length; i++) if (fills[i] > fills[best]) best = i;
     const sorted = [...fills].sort((a, b) => b - a);
     const mean = fills.reduce((a, b) => a + b, 0) / fills.length;
     const std = Math.sqrt(fills.reduce((a, b) => a + (b - mean) * (b - mean), 0) / fills.length);
-    const margin = sorted[0] - sorted[1];
-    const z = std > 0.02 ? (fills[best] - mean) / std : fills[best] - mean > 0.12 ? 3 : 0;
-    const marked = margin >= 0.1 && z >= 1.05 && fills[best] >= 0.12 ? row.options[best].option : undefined;
+    const margin = sorted[0] - (sorted[1] ?? 0);
+    const z = std > 0.012 ? (fills[best] - mean) / std : fills[best] - mean > 0.08 ? 3 : 0;
+    let secondIdx = -1;
+    let secondFill = -Infinity;
+    for (let i = 0; i < fills.length; i++) {
+      if (i === best) continue;
+      if (fills[i] > secondFill) {
+        secondFill = fills[i];
+        secondIdx = i;
+      }
+    }
+    const doubleMark =
+      secondIdx >= 0 &&
+      margin < 0.12 &&
+      fills[secondIdx] >= Math.max(minMarkFill, fills[best] * 0.7) &&
+      omrRatios[secondIdx] >= 0.32;
+    const solid =
+      omrRatios[best] >= markOmr && fills[best] >= minMarkFill && margin >= 0.055 && z >= 0.55;
+    const soft =
+      fills[best] >= softFillFloor &&
+      margin >= 0.055 * 1.15 &&
+      z >= 0.7 &&
+      grays[best] <= 225 &&
+      (omrRatios[best] >= 0.078 || fills[best] >= softFillFloor * 1.05);
+    const marked = !doubleMark && grays[best] <= 225 && (solid || soft) ? row.options[best].option : undefined;
     got.push(marked);
     if (marked === key[row.question - 1]) correct++;
   }
@@ -483,12 +729,14 @@ function runCase(name, layout, truth, photoBuilder) {
   }
   const outW = 1000;
   const outH = Math.round(outW / layout.aspectRatio);
-  const canonical = warp(photo, photoW, photoH, corners, outW, outH);
+  const canonical = warp(photo, photoW, photoH, corners, outW, outH, layout.corners);
   const result = readAnswers(canonical, outW, outH, layout, truth);
+  console.log(`[${name}] Corners :`, JSON.stringify(corners));
   console.log(`[${name}] Expected:`, truth.join(' '));
   console.log(`[${name}] Got     :`, result.got.map((g) => g || '-').join(' '));
   console.log(`[${name}] Score   : ${result.correct}/${result.total}`);
   if (result.correct !== result.total) {
+    // Dump first-row fills for diagnosis
     console.error(`FAIL [${name}]: oracle did not recover all answers`);
     process.exit(1);
   }
@@ -497,56 +745,28 @@ function runCase(name, layout, truth, photoBuilder) {
 const layout = buildLayout(10);
 const truth = ['A', 'B', 'C', 'D', 'E', 'C', 'B', 'D', 'B', 'A'];
 
-function buildSheet(layout, truth) {
+const CORNER_IDS = { topLeft: 0, topRight: 1, bottomRight: 2, bottomLeft: 3 };
+
+function buildSheet(layout, truth, { aruco = true, ink = 25, fillScale = 1 } = {}) {
   const sheetW = 800;
   const sheetH = Math.round(sheetW / layout.aspectRatio);
   const sheet = new Uint8Array(sheetW * sheetH).fill(245);
   const size = MARK * sheetW;
   for (const key of Object.keys(layout.corners)) {
     const p = layout.corners[key];
-    paintSquare(sheet, sheetW, sheetH, p.xPct * sheetW, p.yPct * sheetH, size, 20);
+    if (aruco) paintAruco(sheet, sheetW, sheetH, p.xPct * sheetW, p.yPct * sheetH, size, CORNER_IDS[key]);
+    else paintSquare(sheet, sheetW, sheetH, p.xPct * sheetW, p.yPct * sheetH, size, 20);
   }
   for (let qi = 0; qi < layout.rows.length; qi++) {
     const bubble = layout.rows[qi].options.find((o) => o.option === truth[qi]);
-    const r = layout.bubbleRadiusPct * sheetW * 0.9;
-    paintDisk(sheet, sheetW, sheetH, bubble.xPct * sheetW, bubble.yPct * sheetH, r, 25);
+    const r = layout.bubbleRadiusPct * sheetW * 0.9 * fillScale;
+    paintDisk(sheet, sheetW, sheetH, bubble.xPct * sheetW, bubble.yPct * sheetH, r, ink);
   }
   return { sheet, sheetW, sheetH };
 }
 
-// Case 1: mild keystone (legacy oracle)
-runCase('skew-mild', layout, truth, (layout, truth) => {
-  const { sheet, sheetW, sheetH } = buildSheet(layout, truth);
-  const photoW = 1200;
-  const photoH = 1600;
-  const photo = new Uint8Array(photoW * photoH).fill(30);
-  const marginX = 180;
-  const marginY = 220;
-  for (let y = 0; y < sheetH; y++) {
-    for (let x = 0; x < sheetW; x++) {
-      const u = x / sheetW;
-      const v = y / sheetH;
-      const px = Math.round(marginX + u * (sheetW * 0.85) + v * 40);
-      const py = Math.round(marginY + v * (sheetH * 0.9) + u * 25);
-      if (px >= 0 && py >= 0 && px < photoW && py < photoH) photo[py * photoW + px] = sheet[y * sheetW + x];
-    }
-  }
-  return { photo, photoW, photoH, expectedCorners: null };
-});
-
-// Case 2: strong device-like perspective + filled bubbles trying to steal BL
-runCase('device-perspective', layout, truth, (layout, truth) => {
-  const { sheet, sheetW, sheetH } = buildSheet(layout, truth);
-  const photoW = 1600;
-  const photoH = 2133;
-  // Desk must stay lighter than ink so Otsu doesn't glue the whole frame into one blob.
-  const photo = new Uint8Array(photoW * photoH).fill(190);
-  const dst = {
-    topLeft: { x: 136, y: 1163 },
-    topRight: { x: 1207, y: 1277 },
-    bottomLeft: { x: 441, y: 2050 },
-    bottomRight: { x: 1201, y: 2098 },
-  };
+function projectSheetToPhoto(layout, sheet, sheetW, sheetH, photoW, photoH, dst, desk = 190) {
+  const photo = new Uint8Array(photoW * photoH).fill(desk);
   const src = {
     topLeft: { x: layout.corners.topLeft.xPct * sheetW, y: layout.corners.topLeft.yPct * sheetH },
     topRight: { x: layout.corners.topRight.xPct * sheetW, y: layout.corners.topRight.yPct * sheetH },
@@ -569,10 +789,8 @@ runCase('device-perspective', layout, truth, (layout, truth) => {
       const dydv = (pv.y - p.y) / eps;
       const det = dxdu * dydv - dxdv * dydu;
       if (Math.abs(det) < 1e-9) break;
-      const ex = x - p.x;
-      const ey = y - p.y;
-      u += (ex * dydv - ey * dxdv) / det;
-      v += (-ex * dydu + ey * dxdu) / det;
+      u += ((x - p.x) * dydv - (y - p.y) * dxdv) / det;
+      v += (-(x - p.x) * dydu + (y - p.y) * dxdu) / det;
     }
     return { u, v };
   };
@@ -582,12 +800,72 @@ runCase('device-perspective', layout, truth, (layout, truth) => {
       const p = toPixel(Hdst, u, v);
       const px = Math.round(p.x);
       const py = Math.round(p.y);
-      if (px >= 0 && py >= 0 && px < photoW && py < photoH) {
-        photo[py * photoW + px] = sheet[sy * sheetW + sx];
-      }
+      if (px >= 0 && py >= 0 && px < photoW && py < photoH) photo[py * photoW + px] = sheet[sy * sheetW + sx];
     }
   }
+  return photo;
+}
+
+// Case 1: mild keystone with ArUco markers (dense project — no holes in fiducials)
+runCase('skew-mild', layout, truth, (layout, truth) => {
+  const { sheet, sheetW, sheetH } = buildSheet(layout, truth, { aruco: true });
+  const photoW = 1200;
+  const photoH = 1600;
+  const dst = {
+    topLeft: { x: 180, y: 220 },
+    topRight: { x: 180 + sheetW * 0.85, y: 220 + 25 },
+    bottomLeft: { x: 180 + 40, y: 220 + sheetH * 0.9 },
+    bottomRight: { x: 180 + sheetW * 0.85 + 40, y: 220 + sheetH * 0.9 + 25 },
+  };
+  const photo = projectSheetToPhoto(layout, sheet, sheetW, sheetH, photoW, photoH, dst, 190);
+  return { photo, photoW, photoH, expectedCorners: null };
+});
+
+// Case 2: strong device-like perspective + ArUco + filled bubbles trying to steal BL
+runCase('device-perspective', layout, truth, (layout, truth) => {
+  const { sheet, sheetW, sheetH } = buildSheet(layout, truth, { aruco: true });
+  const photoW = 1600;
+  const photoH = 2133;
+  const dst = {
+    topLeft: { x: 136, y: 1163 },
+    topRight: { x: 1207, y: 1277 },
+    bottomLeft: { x: 441, y: 2050 },
+    bottomRight: { x: 1201, y: 2098 },
+  };
+  const photo = projectSheetToPhoto(layout, sheet, sheetW, sheetH, photoW, photoH, dst, 190);
   return { photo, photoW, photoH, expectedCorners: dst };
+});
+
+// Case 3: two-column sheet (26 questions) — layout parity with app MAX_ROWS_PER_COLUMN=25
+const layout2col = buildLayout(26);
+const truth2 = 'A B C D E C B D B A A B C D E C B D B A A B C D E C'.split(' ');
+runCase('two-column-26', layout2col, truth2, (layout, truth) => {
+  const { sheet, sheetW, sheetH } = buildSheet(layout, truth, { aruco: true });
+  const photoW = 1200;
+  const photoH = Math.round(photoW / layout.aspectRatio);
+  const dst = {
+    topLeft: { x: photoW * 0.08, y: photoH * 0.1 },
+    topRight: { x: photoW * 0.9, y: photoH * 0.12 },
+    bottomRight: { x: photoW * 0.92, y: photoH * 0.9 },
+    bottomLeft: { x: photoW * 0.1, y: photoH * 0.88 },
+  };
+  const photo = projectSheetToPhoto(layout, sheet, sheetW, sheetH, photoW, photoH, dst, 245);
+  return { photo, photoW, photoH, expectedCorners: dst };
+});
+
+// Case 4: light blue-like ink (~120) + partial fill (~55% radius) — priority A
+runCase('light-partial-ink', layout, truth, (layout, truth) => {
+  const { sheet, sheetW, sheetH } = buildSheet(layout, truth, { aruco: true, ink: 120, fillScale: 0.55 });
+  const photoW = 1200;
+  const photoH = 1600;
+  const dst = {
+    topLeft: { x: 180, y: 220 },
+    topRight: { x: 180 + sheetW * 0.85, y: 220 + 25 },
+    bottomLeft: { x: 180 + 40, y: 220 + sheetH * 0.9 },
+    bottomRight: { x: 180 + sheetW * 0.85 + 40, y: 220 + sheetH * 0.9 + 25 },
+  };
+  const photo = projectSheetToPhoto(layout, sheet, sheetW, sheetH, photoW, photoH, dst, 190);
+  return { photo, photoW, photoH, expectedCorners: null };
 });
 
 console.log('OK: oracle pipeline recovered 100% on all cases');
