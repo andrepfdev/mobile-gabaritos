@@ -62,7 +62,7 @@ export default function ExportGabarito() {
       }
       const uri = await capture();
       if (!uri) return;
-      await MediaLibrary.saveToLibraryAsync(uri);
+      await MediaLibrary.Asset.create(uri);
       Alert.alert('Salvo', 'A imagem do gabarito foi salva na sua galeria.');
     } finally {
       setBusy(null);
