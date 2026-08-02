@@ -4,7 +4,9 @@
     "module": "preserve",
     "moduleResolution": "bundler",
     "moduleDetection": "force",
-    "customConditions": ["react-native"],
+    "customConditions": [
+      "react-native"
+    ],
     "jsx": "react-native",
     "strict": true,
     "allowJs": true,
@@ -14,18 +16,20 @@
     "noEmit": true,
     "isolatedModules": true,
     "ignoreDeprecations": "6.0",
-    "lib": ["ESNext"],
+    "lib": [
+      "ESNext"
+    ],
     "baseUrl": ".",
     "paths": {
-      "jpeg-js": ["./types/jpeg-js-shim.d.ts"]
+      "jpeg-js": [
+        "./types/jpeg-js-shim.d.ts"
+      ]
     }
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "types/**/*.d.ts",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",
@@ -34,5 +38,6 @@
     "dist",
     "tools",
     "drizzle.config.ts"
-  ]
+  ],
+  "extends": "expo/tsconfig.base"
 }

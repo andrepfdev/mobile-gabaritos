@@ -140,9 +140,8 @@ export default function ScanResult() {
             Não foi possível ler o gabarito
           </Text>
           <Text variant="body" color={colors.textMuted} style={styles.errorSubtitle}>
-            {errorDebug?.motor === 'OpenCV-ArUco' || errorDebug?.message?.includes('OpenCV')
-              ? 'O motor OpenCV precisa ver as 4 marcas ArUco da grade (cantos). Reenquadre, evite reflexo e escaneie de novo.'
-              : 'Enquadre as 4 marcas ArUco de canto, use fundo claro e boa iluminação — sem teclado ou objetos escuros atrás.'}
+            Não conseguimos identificar os 4 marcadores dos cantos da folha. Reenquadre, evite
+            reflexo, use fundo claro e boa iluminação, e escaneie de novo.
           </Text>
           <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
 
@@ -202,7 +201,9 @@ export default function ScanResult() {
         {isAmbiguous ? (
           <Card variant="pink" style={styles.card}>
             <Text variant="body" weight="medium">
-              Leitura ambígua (~10%+ sem marca clara ou com dupla marcação). Escaneie de novo com as 4 marcas ArUco no guia e luz uniforme — não edite a nota manualmente.
+              Não conseguimos ler ~10% das respostas com clareza (sem marcação ou marcação dupla).
+              Escaneie novamente com boa iluminação e a folha bem alinhada ao guia — não edite a
+              nota manualmente.
             </Text>
             <View style={{ marginTop: spacing.sm }}>
               <PillButton title="Escanear novamente" variant="accent" onPress={onScanAgain} />

@@ -10,9 +10,11 @@ import { ArucoMarker } from './ArucoMarker';
 export type GabaritoSheetProps = {
   exam: Exam;
   width?: number;
+  /** Question -> correct option letter. When set, that bubble renders pre-filled (calibration sheet). */
+  answerKey?: Record<number, string>;
 };
 
-export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
+export function GabaritoSheet({ exam, width = 1000, answerKey }: GabaritoSheetProps) {
   const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
   const height = width / layout.aspectRatio;
   const bubbleDiameter = layout.bubbleRadiusPct * width * 2;
@@ -70,11 +72,13 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
           {row.options.map((bubble) => {
             const cx = bubble.center.xPct * width;
             const cy = bubble.center.yPct * height;
+            const isMarked = answerKey?.[row.question] === bubble.option;
             return (
               <React.Fragment key={bubble.option}>
                 <View
                   style={[
                     styles.bubble,
+                    isMarked && styles.bubbleMarked,
                     {
                       width: bubbleDiameter,
                       height: bubbleDiameter,
@@ -103,8 +107,9 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
                       {
                         fontSize: optionLabelSize,
                         fontWeight: '600',
-                        // Soft gray: readable on print, weaker than pen for OMR.
-                        color: colors.textMuted,
+                        // Soft gray: readable on print, weaker than pen for OMR. White when
+                        // pre-filled (calibration sheet) so the letter stays legible on ink.
+                        color: isMarked ? colors.white : colors.textMuted,
                         // Android font metrics bias glyphs upward inside the disk.
                         transform: [{ translateY: optionLabelSize * 0.12 }],
                       },
@@ -170,8 +175,11 @@ const styles = StyleSheet.create({
   },
   bubble: {
     position: 'absolute',
-    borderWidth: 1.5,
+    borderWidth: 2.5,
     borderColor: colors.printInk,
     backgroundColor: colors.white,
+  },
+  bubbleMarked: {
+    backgroundColor: colors.printInk,
   },
 });

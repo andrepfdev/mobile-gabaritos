@@ -96,10 +96,10 @@ export default function Welcome() {
       >
         {SLIDES.map((slide) => (
           <View key={slide.title} style={[styles.slide, { width }]}>
-            <Text variant="h1" weight="bold" color={colors.white} style={styles.title}>
+            <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
               {slide.title}
             </Text>
-            <Text variant="body" color="#c9c9c9" style={styles.subtitle}>
+            <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
               {slide.subtitle}
             </Text>
           </View>
@@ -112,7 +112,7 @@ export default function Welcome() {
             <View key={slide.title} style={[styles.dot, i === index && styles.dotActive]} />
           ))}
         </View>
-        <PillButton title={isLast ? 'Começar' : 'Próximo'} variant="light" onPress={goNext} />
+        <PillButton title={isLast ? 'Começar' : 'Próximo'} variant="accent" onPress={goNext} />
       </SafeAreaView>
     </View>
   );
@@ -121,7 +121,7 @@ export default function Welcome() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.dark,
+    backgroundColor: colors.bgCream,
   },
   safeArea: {
     paddingTop: spacing.xl,
@@ -170,11 +170,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4a4a4a',
+    backgroundColor: colors.progressTrack,
     marginHorizontal: 4,
   },
   dotActive: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.dark,
     width: 20,
   },
 });

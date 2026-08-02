@@ -1,4 +1,6 @@
-import { Exam } from './localDb/schema';
+import { AnswerKey, Exam } from './localDb/schema';
+
+export const CALIBRATION_EXAM_ID = 'exam-calibration';
 
 export const weekdayCorrections = [
   { label: 'Seg', value: 4 },
@@ -28,6 +30,20 @@ export const statisticsSummary = {
 };
 
 export const mockExams: Exam[] = [
+  {
+    id: CALIBRATION_EXAM_ID,
+    title: 'Gabarito de Calibração',
+    subject: undefined,
+    className: undefined,
+    code: 'CAL000',
+    optionsCount: 5,
+    questionCount: 10,
+    dueDate: undefined,
+    createdAt: '2026-07-01T10:00:00.000Z',
+    priority: 'none',
+    status: 'waiting',
+    students: [],
+  },
   {
     id: 'exam-1',
     title: 'Avaliação de Matemática — 3º Bimestre',
@@ -88,3 +104,12 @@ export const mockExamProgress: Record<string, number> = {
   'exam-1': 0.25,
   'exam-3': 0.6,
 };
+
+// All 10 questions pre-filled, cycling through every option letter so the calibration sheet
+// exercises every bubble column when scanned back.
+export const mockAnswerKeys: AnswerKey[] = [
+  {
+    examId: CALIBRATION_EXAM_ID,
+    answers: { 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E', 6: 'A', 7: 'B', 8: 'C', 9: 'D', 10: 'E' },
+  },
+];

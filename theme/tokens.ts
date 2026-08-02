@@ -32,7 +32,7 @@ export const colors = {
 export const radii = {
   sm: 12,
   md: 20,
-  lg: 28,
+  lg: 16,
   xl: 32,
   pill: 999,
 } as const;

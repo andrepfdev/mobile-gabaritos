@@ -65,17 +65,17 @@ export default function ScanGabarito() {
 
       const gate = await gateCaptureAruco(normalized.uri);
       if (!gate.ok) {
-        Alert.alert('Marcas ArUco incompletas', `${gate.reason}\n\nAjuste o enquadramento e capture de novo.`);
+        Alert.alert(
+          'Não identificamos os cantos da folha',
+          'Reenquadre a folha, garanta boa iluminação e capture de novo.',
+        );
         return;
       }
 
       setPhotoUri(normalized.uri);
       router.push(`/exams/${examId}/scan-result`);
-    } catch (error) {
-      Alert.alert(
-        'Não foi possível capturar a foto',
-        error instanceof Error ? error.message : 'Tente novamente.',
-      );
+    } catch {
+      Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
     } finally {
       setCapturing(false);
     }
@@ -124,19 +124,22 @@ export default function ScanGabarito() {
       />
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
-        <Card variant="light" style={styles.tipCard}>
+        <Card variant={codeVerified ? 'pink' : 'light'} style={styles.tipCard}>
           <Text variant="caption" weight="medium">
-            {codeError ?? (codeVerified ? `Código confirmado: ${exam.code}` : 'Alinhe a folha e aponte o QR code para a câmera')}
+            {codeError ??
+              (codeVerified
+                ? `Código confirmado: ${exam.code}. Agora alinhe os 4 cantos da folha com o guia.`
+                : 'Alinhe a folha e aponte o QR code para a câmera')}
           </Text>
         </Card>
 
         {/* Guide lives in the free band between tip + footer so it is not clipped/pushed high. */}
-        <AlignmentGuide layout={layout} fillParent />
+        <AlignmentGuide layout={layout} fillParent active={codeVerified} />
 
         <View style={styles.footer}>
           <Text variant="caption" color={colors.white} style={styles.hint}>
             Caneta preta ou azul. Prefira preencher bem o círculo (aceita preenchimento parcial).
-            Enquadre as 4 marcas ArUco, fundo claro, luz uniforme — sem teclado atrás.
+            Enquadre os 4 marcadores dos cantos da folha, fundo claro, luz uniforme — sem teclado atrás.
           </Text>
           <PillButton
             title={

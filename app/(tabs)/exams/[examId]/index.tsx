@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '../../../../components/ui/Text';
@@ -7,15 +7,18 @@ import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { CALIBRATION_EXAM_ID } from '../../../../lib/mockData';
 
 export default function ExamDetail() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const deleteExam = useExamStore((s) => s.deleteExam);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
+  const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
 
   if (!exam) {
     return (
@@ -26,6 +29,24 @@ export default function ExamDetail() {
       </SafeAreaView>
     );
   }
+
+  const onDelete = () => {
+    Alert.alert(
+      'Excluir prova',
+      `Tem certeza que deseja excluir "${exam.title}"? Essa ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteExam(exam.id);
+            router.replace('/exams');
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -72,7 +93,9 @@ export default function ExamDetail() {
             Escanear gabarito
           </Text>
           <Text variant="body" color={colors.white} style={styles.cardSubtitle}>
-            Aponte a câmera para uma folha preenchida e receba a nota na hora.
+            {isCalibration
+              ? 'Escaneie a folha de calibração impressa para testar se a câmera do seu celular lê bem as marcações.'
+              : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
           </Text>
           <PillButton
             title="Escanear"
@@ -84,10 +107,12 @@ export default function ExamDetail() {
 
         <Card variant="cream" style={styles.card}>
           <Text variant="h2" weight="bold">
-            Exportar gabarito em branco
+            {isCalibration ? 'Exportar gabarito de calibração' : 'Exportar gabarito em branco'}
           </Text>
           <Text variant="body" color={colors.textMuted} style={styles.cardSubtitle}>
-            Baixe uma imagem para imprimir ou inserir em um documento de texto.
+            {isCalibration
+              ? 'Baixe esta folha já marcada, imprima e escaneie de volta para testar a câmera do seu celular antes de aplicar provas reais.'
+              : 'Baixe uma imagem para imprimir ou inserir em um documento de texto.'}
           </Text>
           <PillButton
             title="Exportar"
@@ -96,6 +121,12 @@ export default function ExamDetail() {
             disabled={!answerKey}
           />
         </Card>
+
+        <Pressable onPress={onDelete} style={styles.deleteButton} hitSlop={8}>
+          <Text variant="body" weight="medium" color={colors.danger}>
+            Excluir prova
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -125,5 +156,10 @@ const styles = StyleSheet.create({
   cardSubtitle: {
     marginTop: spacing.xs,
     marginBottom: spacing.md,
+  },
+  deleteButton: {
+    alignSelf: 'center',
+    marginTop: spacing.lg,
+    padding: spacing.sm,
   },
 });

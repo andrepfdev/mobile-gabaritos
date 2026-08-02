@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { getAll } from '../lib/localDb/repository';
 import { AnswerKey, Exam, STORAGE_KEYS } from '../lib/localDb/schema';
-import { mockExams } from '../lib/mockData';
+import { mockAnswerKeys, mockExams } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
 import { ensureMigrated } from '../lib/db/client';
 import { listExams, upsertExam, softDeleteExam } from '../lib/db/examsRepository';
@@ -68,13 +68,17 @@ export const useExamStore = create<ExamStore>((set, get) => ({
     await importFromAsyncStorageIfNeeded();
 
     let exams = await listExams();
-    const answerKeys = await listAnswerKeys();
+    let answerKeys = await listAnswerKeys();
 
     if (exams.length === 0) {
       for (const exam of mockExams) {
         await upsertExam(exam);
       }
+      for (const answerKey of mockAnswerKeys) {
+        await upsertAnswerKey(answerKey);
+      }
       exams = await listExams();
+      answerKeys = await listAnswerKeys();
     }
 
     set({ exams, answerKeys, hydrated: true });

@@ -7,12 +7,14 @@ export type AlignmentGuideProps = {
   layout: GabaritoLayout;
   /** Center inside the parent flex slot (between tip card and capture button). */
   fillParent?: boolean;
+  /** True once the QR code was confirmed — switches the guide from "aim the QR" to "align the corners". */
+  active?: boolean;
 };
 
 /**
  * Visual guide overlaid on the camera — frames the OMR block (ArUco quad), not the header.
  */
-export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuideProps) {
+export function AlignmentGuide({ layout, fillParent = false, active = false }: AlignmentGuideProps) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const maxWidth = screenWidth * 0.82;
   const maxHeight = fillParent ? screenHeight * 0.5 : screenHeight * 0.55;
@@ -37,7 +39,7 @@ export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuidePro
 
   return (
     <View pointerEvents="none" style={fillParent ? styles.slotWrap : styles.screenWrap}>
-      <View style={[styles.guide, { width: guideWidth, height: guideHeight }]}>
+      <View style={[styles.guide, { width: guideWidth, height: guideHeight }, active && styles.guideActive]}>
         {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const).map((corner) => {
           const point = layout.corners[corner];
           const x = ((point.xPct - omrLeft) / omrWidthFrac) * guideWidth;
@@ -47,6 +49,7 @@ export function AlignmentGuide({ layout, fillParent = false }: AlignmentGuidePro
               key={corner}
               style={[
                 styles.mark,
+                active && styles.markActive,
                 {
                   width: markSize,
                   height: markSize,
@@ -84,9 +87,17 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderRadius: 12,
   },
+  guideActive: {
+    borderWidth: 3,
+    borderColor: colors.success,
+    borderStyle: 'solid',
+  },
   mark: {
     position: 'absolute',
     backgroundColor: colors.coral,
     borderRadius: 3,
+  },
+  markActive: {
+    backgroundColor: colors.success,
   },
 });
