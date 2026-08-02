@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '../../../../components/ui/Text';
@@ -22,6 +22,17 @@ import {
 } from '../../../../lib/gabarito/scan';
 
 type PixelPoint = { x: number; y: number };
+
+function LegendItem({ color, borderColor, label }: { color: string; borderColor?: string; label: string }) {
+  return (
+    <View style={styles.legendRow}>
+      <View style={[styles.legendDot, { backgroundColor: color, borderColor: borderColor ?? color }]} />
+      <Text variant="caption" color={colors.textMuted}>
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 export default function ScanResult() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -168,6 +179,12 @@ export default function ScanResult() {
         <Text variant="h2" weight="bold" style={styles.sectionTitle}>
           Detalhamento
         </Text>
+        <Card variant="grayLight" style={styles.legendCard}>
+          <LegendItem color={colors.success} label="Acertou" />
+          <LegendItem color={colors.yellow} label="Marcou, mas está errada" />
+          <LegendItem color="#dceee0" label="Resposta correta (não foi a marcada)" />
+          <LegendItem color={colors.white} borderColor={colors.yellow} label="Não identificamos marcação (contorno = resposta correta)" />
+        </Card>
         <AnswerGrid
           questionCount={exam.questionCount}
           answers={answers as Record<number, string>}
@@ -195,7 +212,7 @@ export default function ScanResult() {
             </Text>
             {debug.rows.map((row) => (
               <Text key={row.question} variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}`).join(' ')} → ${
+                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}@(${r.x},${r.y})`).join(' ')} → ${
                   row.isMarked ? `marcado ${row.darkestOption}` : 'sem marca'
                 } (min=${row.darkestValue} 2º=${row.secondDarkestValue} max=${row.lightestValue})`}
               </Text>
@@ -219,6 +236,21 @@ const styles = StyleSheet.create({
   },
   debugCard: {
     marginTop: spacing.lg,
+  },
+  legendCard: {
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  legendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  legendDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
   },
   debugLine: {
     marginTop: spacing.xs,

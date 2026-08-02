@@ -45,7 +45,7 @@ export type ScanDebugInfo = {
   corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint };
   rows: {
     question: number;
-    readings: { option: string; value: number }[];
+    readings: { option: string; value: number; x: number; y: number }[];
     darkestOption?: string;
     darkestValue: number;
     secondDarkestValue: number;
@@ -322,7 +322,7 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
       let darkestValue = Infinity;
       let secondDarkestValue = Infinity;
       let lightestValue = -Infinity;
-      const readings: { option: string; value: number }[] = [];
+      const readings: { option: string; value: number; x: number; y: number }[] = [];
 
       for (const bubble of row.options) {
         const u = normalize(bubble.center.xPct, uMin, uMax);
@@ -333,7 +333,7 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
 
         const pixels = readGrayPixels(gl, x, y, sampleSize, sampleSize);
         const value = darkestFractionGray(pixels);
-        readings.push({ option: bubble.option, value: Math.round(value) });
+        readings.push({ option: bubble.option, value: Math.round(value), x: Math.round(center.x), y: Math.round(center.y) });
 
         if (value < darkestValue) {
           secondDarkestValue = darkestValue;
