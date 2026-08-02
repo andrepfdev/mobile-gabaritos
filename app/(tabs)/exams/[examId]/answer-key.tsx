@@ -7,6 +7,7 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { optionsForCount } from '../../../../lib/gabarito/layout';
 
 export default function AnswerKeyScreen() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -46,6 +47,7 @@ export default function AnswerKeyScreen() {
           answers={answers}
           onChange={onChange}
           mode="input"
+          options={optionsForCount(exam.optionsCount)}
         />
         <PillButton title="Salvar gabarito" onPress={onSave} disabled={!allAnswered} />
       </ScrollView>

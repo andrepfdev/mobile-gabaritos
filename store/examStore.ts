@@ -6,15 +6,22 @@ import { AnswerKey, Exam, Result, STORAGE_KEYS, StudentAnswer } from '../lib/loc
 import { mockExams } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
 
-/** Backfills `code` for exams saved before that field existed (older AsyncStorage data). */
-async function backfillExamCodes(exams: Exam[]): Promise<Exam[]> {
+/** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved in AsyncStorage. */
+async function backfillExams(exams: Exam[]): Promise<Exam[]> {
   let sequence = 0;
   let changed = false;
   const patched = exams.map((exam) => {
     sequence += 1;
-    if (exam.code) return exam;
-    changed = true;
-    return { ...exam, code: generateExamCode(exam.subject, sequence) };
+    let next = exam;
+    if (!next.code) {
+      changed = true;
+      next = { ...next, code: generateExamCode(next.subject, sequence) };
+    }
+    if (!next.optionsCount) {
+      changed = true;
+      next = { ...next, optionsCount: 5 };
+    }
+    return next;
   });
   if (changed) {
     await AsyncStorage.setItem(STORAGE_KEYS.exams, JSON.stringify(patched));
@@ -64,7 +71,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       return;
     }
 
-    const patchedExams = await backfillExamCodes(exams);
+    const patchedExams = await backfillExams(exams);
     set({ exams: patchedExams, answerKeys, studentAnswers, results, hydrated: true });
   },
 

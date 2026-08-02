@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Text } from '../../../components/ui/Text';
@@ -27,6 +27,7 @@ export default function NewExam() {
   const [className, setClassName] = useState('');
   const [questionCount, setQuestionCount] = useState('10');
   const [dueDate, setDueDate] = useState('');
+  const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
 
   const onSubmit = async () => {
     if (!title.trim() || !questionCount.trim()) return;
@@ -43,6 +44,7 @@ export default function NewExam() {
       status: 'to_correct',
       students: [],
       code: generateExamCode(subject.trim() || undefined, examCount + 1),
+      optionsCount,
     });
     router.replace(`/exams/${id}`);
   };
@@ -68,6 +70,21 @@ export default function NewExam() {
           onChangeText={setDueDate}
           placeholder="2026-08-15"
         />
+        <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.optionsLabel}>
+          Alternativas por questão
+        </Text>
+        <View style={styles.optionsRow}>
+          <PillButton
+            title="A, B, C, D"
+            variant={optionsCount === 4 ? 'accent' : 'outline'}
+            onPress={() => setOptionsCount(4)}
+          />
+          <PillButton
+            title="A, B, C, D, E"
+            variant={optionsCount === 5 ? 'accent' : 'outline'}
+            onPress={() => setOptionsCount(5)}
+          />
+        </View>
         <PillButton title="Criar prova" onPress={onSubmit} />
       </ScrollView>
     </SafeAreaView>
@@ -84,6 +101,14 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
   },
   title: {
+    marginBottom: spacing.md,
+  },
+  optionsLabel: {
+    marginBottom: spacing.xs,
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
     marginBottom: spacing.md,
   },
 });

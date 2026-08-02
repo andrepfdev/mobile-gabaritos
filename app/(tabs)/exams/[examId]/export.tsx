@@ -10,7 +10,7 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
-import { buildGabaritoLayout } from '../../../../lib/gabarito/layout';
+import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
 
 // Rendered well above screen resolution so the exported image stays sharp when printed at full
 // size — the preview below shows it scaled down to fit the screen, but capture() always grabs
@@ -37,7 +37,7 @@ export default function ExportGabarito() {
 
   // The sheet's height (and aspect ratio) depends on the question count — a short exam gets a
   // shorter sheet instead of a fixed A4 ratio with wasted blank space at the bottom.
-  const aspectRatio = buildGabaritoLayout(exam.questionCount).aspectRatio;
+  const aspectRatio = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount)).aspectRatio;
   const previewWidth = screenWidth - spacing.lg * 2;
   const captureHeight = CAPTURE_WIDTH / aspectRatio;
   const previewScale = previewWidth / CAPTURE_WIDTH;

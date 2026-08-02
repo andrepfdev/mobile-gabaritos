@@ -3,7 +3,7 @@ import { StyleSheet, Text as RNText, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/tokens';
 import { Exam } from '../../lib/localDb/schema';
-import { buildGabaritoLayout, GabaritoLayout } from '../../lib/gabarito/layout';
+import { buildGabaritoLayout, GabaritoLayout, optionsForCount } from '../../lib/gabarito/layout';
 
 export type GabaritoSheetProps = {
   exam: Exam;
@@ -29,7 +29,7 @@ function CornerMark({ layout, width, height, corner }: { layout: GabaritoLayout;
 }
 
 export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
-  const layout = buildGabaritoLayout(exam.questionCount);
+  const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
   const height = width / layout.aspectRatio;
   const bubbleDiameter = layout.bubbleRadiusPct * width * 2;
   const labelFontSize = bubbleDiameter * 0.5;

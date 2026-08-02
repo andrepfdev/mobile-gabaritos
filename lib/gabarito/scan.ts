@@ -1,4 +1,6 @@
-import { AlphaType, ColorType, Skia, SkImage } from '@shopify/react-native-skia';
+import { Image } from 'react-native';
+import { GLView } from 'expo-gl';
+import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import { GabaritoLayout } from './layout';
 
 const MARK_THRESHOLD = 200; // 0-255 gray level; absolute safety ceiling, the darkest option must still be reasonably dark
@@ -36,6 +38,31 @@ export type ScanDebugInfo = {
   }[];
 };
 
+function getImageSize(uri: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
+  });
+}
+
+/**
+ * Reads an RGBA rectangle from the framebuffer-bound texture and converts it to grayscale
+ * (standard luma weighting) — WebGL only gives us RGBA, but every downstream function
+ * (corner centroid, darkest-fraction) works on a flat grayscale byte array, same shape as
+ * what the previous Skia-based reader produced.
+ */
+function readGrayPixels(gl: ExpoWebGLRenderingContext, x: number, y: number, w: number, h: number): Uint8Array {
+  const rgba = new Uint8Array(w * h * 4);
+  gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
+  const gray = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const r = rgba[i * 4];
+    const g = rgba[i * 4 + 1];
+    const b = rgba[i * 4 + 2];
+    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  return gray;
+}
+
 /**
  * Average of the darkest `DARKEST_FRACTION` of pixels in the window, instead of the plain mean.
  * A handwritten pen mark rarely fills a bubble solidly — it's a loose scribble with a lot of
@@ -45,8 +72,8 @@ export type ScanDebugInfo = {
  * while a uniformly-lit or uniformly-shadowed blank bubble stays close to its true brightness
  * (shadows darken evenly — they rarely produce truly near-black pixels the way ink does).
  */
-function darkestFractionGray(pixels: Uint8Array | Float32Array | null): number {
-  if (!pixels || pixels.length === 0) return 255;
+function darkestFractionGray(pixels: Uint8Array): number {
+  if (pixels.length === 0) return 255;
   const sorted = Array.from(pixels).sort((a, b) => a - b);
   const count = Math.max(1, Math.round(sorted.length * DARKEST_FRACTION));
   let sum = 0;
@@ -56,7 +83,7 @@ function darkestFractionGray(pixels: Uint8Array | Float32Array | null): number {
 
 /** Centroid of every below-threshold pixel within `region`, or null if too few were found. */
 function centroidOfDarkPixels(
-  image: SkImage,
+  gl: ExpoWebGLRenderingContext,
   region: { x: number; y: number; width: number; height: number },
   minDarkPixels: number,
 ): { point: PixelPoint; count: number } | null {
@@ -65,13 +92,7 @@ function centroidOfDarkPixels(
   const regionWidth = Math.max(1, Math.round(region.width));
   const regionHeight = Math.max(1, Math.round(region.height));
 
-  const pixels = image.readPixels(regionX, regionY, {
-    width: regionWidth,
-    height: regionHeight,
-    colorType: ColorType.Gray_8,
-    alphaType: AlphaType.Opaque,
-  });
-  if (!pixels) return null;
+  const pixels = readGrayPixels(gl, regionX, regionY, regionWidth, regionHeight);
 
   let sumX = 0;
   let sumY = 0;
@@ -105,8 +126,8 @@ function centroidOfDarkPixels(
  * around it — small enough to exclude distant background, generous enough to still contain the
  * mark even if the rough pass was somewhat off.
  */
-function findCornerMark(image: SkImage, region: { x: number; y: number; width: number; height: number }): PixelPoint | null {
-  let current = centroidOfDarkPixels(image, region, MIN_CORNER_DARK_PIXELS);
+function findCornerMark(gl: ExpoWebGLRenderingContext, region: { x: number; y: number; width: number; height: number }): PixelPoint | null {
+  let current = centroidOfDarkPixels(gl, region, MIN_CORNER_DARK_PIXELS);
   if (!current) return null;
 
   // Two refinement passes, each in a tighter window centered on the previous result — each pass
@@ -116,7 +137,7 @@ function findCornerMark(image: SkImage, region: { x: number; y: number; width: n
   for (let pass = 0; pass < 2; pass++) {
     windowSize *= 0.15;
     const refined = centroidOfDarkPixels(
-      image,
+      gl,
       {
         x: current.point.x - windowSize / 2,
         y: current.point.y - windowSize / 2,
@@ -184,115 +205,133 @@ function toPixel(homography: Homography, u: number, v: number): PixelPoint {
 }
 
 /**
- * Decodes a captured gabarito photo once, locates its 4 printed corner marks, computes the
- * perspective transform (homography) from those corners, then for every bubble in `layout`
- * samples a small grayscale window at its true photographed position (mapped through that
- * homography, not raw photo percentages) to find the darkest (filled-in) option per question.
- * This tolerates the sheet being framed anywhere/any scale/rotation/perspective tilt within the
- * photo — the homography corrects for a tilted camera angle, unlike a simpler bilinear blend.
+ * Decodes a captured gabarito photo once (via a headless expo-gl context — the photo is loaded
+ * as a GL texture, attached to a framebuffer, and read back with readPixels; no visible component
+ * needed), locates its 4 printed corner marks, computes the perspective transform (homography)
+ * from those corners, then for every bubble in `layout` samples a small grayscale window at its
+ * true photographed position (mapped through that homography, not raw photo percentages) to find
+ * the darkest (filled-in) option per question. This tolerates the sheet being framed anywhere/any
+ * scale/rotation/perspective tilt within the photo — the homography corrects for a tilted camera
+ * angle, unlike a simpler bilinear blend.
  */
 export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout): Promise<{ answers: ScanAnswers; debug: ScanDebugInfo }> {
-  const data = await Skia.Data.fromURI(photoUri);
-  const image = Skia.Image.MakeImageFromEncoded(data);
-  if (!image) {
-    throw new Error('Não foi possível processar a imagem capturada.');
-  }
+  const { width, height } = await getImageSize(photoUri);
 
-  const width = image.width();
-  const height = image.height();
+  const gl = await GLView.createContextAsync();
+  const texture = gl.createTexture();
+  const framebuffer = gl.createFramebuffer();
 
-  // Each corner mark is searched for within its own quadrant of the photo — the on-screen guide
-  // gets the sheet roughly centered/filling the frame, so this is a generous-but-bounded search.
-  const topLeft = findCornerMark(image, { x: 0, y: 0, width: width * 0.5, height: height * 0.5 });
-  const topRight = findCornerMark(image, { x: width * 0.5, y: 0, width: width * 0.5, height: height * 0.5 });
-  const bottomLeft = findCornerMark(image, { x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
-  const bottomRight = findCornerMark(image, { x: width * 0.5, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
+  try {
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    // Flips the source image on upload so readPixels(0,0) below ends up matching the photo's own
+    // top-left corner — without this, WebGL's bottom-left-origin readPixels would read everything
+    // upside down relative to the top-left-origin math the rest of this file assumes.
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    // `{ localUri }` is an Expo-specific extension of texImage2D (not part of the standard WebGL
+    // TS types), so this call needs a cast.
+    (gl.texImage2D as (...args: unknown[]) => void)(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, { localUri: photoUri });
 
-  if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
-    throw new Error('Não foi possível localizar as marcas de canto do gabarito na foto.');
-  }
-  const corners = { topLeft, topRight, bottomLeft, bottomRight };
+    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+    gl.viewport(0, 0, width, height);
 
-  // Use the detected top edge span as the sheet's effective on-photo width, to size sample
-  // windows relative to the sheet's actual scale in this photo (not the raw photo dimensions).
-  const sheetWidthPx = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
-  // 1.5x the bubble's own diameter, not just the diameter — gives margin for small residual
-  // position error (homography is only as good as the detected corners) and for handwritten
-  // scribbles that aren't perfectly centered in the printed circle, without overlapping the
-  // neighboring bubble (spaced much further apart than this window is wide).
-  const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * sheetWidthPx));
+    // Each corner mark is searched for within its own quadrant of the photo — the on-screen guide
+    // gets the sheet roughly centered/filling the frame, so this is a generous-but-bounded search.
+    const topLeft = findCornerMark(gl, { x: 0, y: 0, width: width * 0.5, height: height * 0.5 });
+    const topRight = findCornerMark(gl, { x: width * 0.5, y: 0, width: width * 0.5, height: height * 0.5 });
+    const bottomLeft = findCornerMark(gl, { x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
+    const bottomRight = findCornerMark(gl, { x: width * 0.5, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
 
-  // The corner marks themselves sit inset from the sheet's true edges (layout.corners.*.xPct/yPct
-  // are e.g. ~0.035/~0.965, not exactly 0/1) — every bubble percentage must be renormalized onto
-  // that same [corner, corner] span before the bilinear lerp below, otherwise u=0.15 gets treated
-  // as "15% of the way from one corner mark to the other" when it's really ~15% of the *whole
-  // page*, which is a bit further along the corner-to-corner span — this was silently shifting
-  // every sampled bubble off by a fraction of a column.
-  const uMin = layout.corners.topLeft.xPct;
-  const uMax = layout.corners.topRight.xPct;
-  const vMin = layout.corners.topLeft.yPct;
-  const vMax = layout.corners.bottomLeft.yPct;
+    if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
+      throw new Error('Não foi possível localizar as marcas de canto do gabarito na foto.');
+    }
+    const corners = { topLeft, topRight, bottomLeft, bottomRight };
 
-  const homography = computeHomography(corners);
+    // Use the detected top edge span as the sheet's effective on-photo width, to size sample
+    // windows relative to the sheet's actual scale in this photo (not the raw photo dimensions).
+    const sheetWidthPx = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
+    // 1.5x the bubble's own diameter, not just the diameter — gives margin for small residual
+    // position error (homography is only as good as the detected corners) and for handwritten
+    // scribbles that aren't perfectly centered in the printed circle, without overlapping the
+    // neighboring bubble (spaced much further apart than this window is wide).
+    const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * sheetWidthPx));
 
-  const answers: ScanAnswers = {};
-  const debugRows: ScanDebugInfo['rows'] = [];
+    // The corner marks themselves sit inset from the sheet's true edges (layout.corners.*.xPct/yPct
+    // are e.g. ~0.035/~0.965, not exactly 0/1) — every bubble percentage must be renormalized onto
+    // that same [corner, corner] span before the homography below, otherwise u=0.15 gets treated
+    // as "15% of the way from one corner mark to the other" when it's really ~15% of the *whole
+    // page*, which is a bit further along the corner-to-corner span — this was silently shifting
+    // every sampled bubble off by a fraction of a column.
+    const uMin = layout.corners.topLeft.xPct;
+    const uMax = layout.corners.topRight.xPct;
+    const vMin = layout.corners.topLeft.yPct;
+    const vMax = layout.corners.bottomLeft.yPct;
 
-  for (const row of layout.rows) {
-    let darkestOption: string | undefined;
-    let darkestValue = Infinity;
-    let secondDarkestValue = Infinity;
-    let lightestValue = -Infinity;
-    const readings: { option: string; value: number }[] = [];
+    const homography = computeHomography(corners);
 
-    for (const bubble of row.options) {
-      const u = normalize(bubble.center.xPct, uMin, uMax);
-      const v = normalize(bubble.center.yPct, vMin, vMax);
-      const center = toPixel(homography, u, v);
-      const x = Math.min(Math.max(0, Math.round(center.x - sampleSize / 2)), Math.max(0, width - sampleSize));
-      const y = Math.min(Math.max(0, Math.round(center.y - sampleSize / 2)), Math.max(0, height - sampleSize));
+    const answers: ScanAnswers = {};
+    const debugRows: ScanDebugInfo['rows'] = [];
 
-      const pixels = image.readPixels(x, y, {
-        width: sampleSize,
-        height: sampleSize,
-        colorType: ColorType.Gray_8,
-        alphaType: AlphaType.Opaque,
+    for (const row of layout.rows) {
+      let darkestOption: string | undefined;
+      let darkestValue = Infinity;
+      let secondDarkestValue = Infinity;
+      let lightestValue = -Infinity;
+      const readings: { option: string; value: number }[] = [];
+
+      for (const bubble of row.options) {
+        const u = normalize(bubble.center.xPct, uMin, uMax);
+        const v = normalize(bubble.center.yPct, vMin, vMax);
+        const center = toPixel(homography, u, v);
+        const x = Math.min(Math.max(0, Math.round(center.x - sampleSize / 2)), Math.max(0, width - sampleSize));
+        const y = Math.min(Math.max(0, Math.round(center.y - sampleSize / 2)), Math.max(0, height - sampleSize));
+
+        const pixels = readGrayPixels(gl, x, y, sampleSize, sampleSize);
+        const value = darkestFractionGray(pixels);
+        readings.push({ option: bubble.option, value: Math.round(value) });
+
+        if (value < darkestValue) {
+          secondDarkestValue = darkestValue;
+          darkestValue = value;
+          darkestOption = bubble.option;
+        } else if (value < secondDarkestValue) {
+          secondDarkestValue = value;
+        }
+        if (value > lightestValue) {
+          lightestValue = value;
+        }
+      }
+
+      const isMarked =
+        darkestValue < MARK_THRESHOLD &&
+        secondDarkestValue - darkestValue >= MIN_SEPARATION &&
+        darkestValue <= lightestValue * (1 - RELATIVE_DROP_RATIO);
+      answers[row.question - 1] = isMarked ? darkestOption : undefined;
+      debugRows.push({
+        question: row.question,
+        readings,
+        darkestOption,
+        darkestValue: Math.round(darkestValue),
+        secondDarkestValue: Number.isFinite(secondDarkestValue) ? Math.round(secondDarkestValue) : -1,
+        lightestValue: Math.round(lightestValue),
+        isMarked,
       });
-      const value = darkestFractionGray(pixels);
-      readings.push({ option: bubble.option, value: Math.round(value) });
-
-      if (value < darkestValue) {
-        secondDarkestValue = darkestValue;
-        darkestValue = value;
-        darkestOption = bubble.option;
-      } else if (value < secondDarkestValue) {
-        secondDarkestValue = value;
-      }
-      if (value > lightestValue) {
-        lightestValue = value;
-      }
     }
 
-    const isMarked =
-      darkestValue < MARK_THRESHOLD &&
-      secondDarkestValue - darkestValue >= MIN_SEPARATION &&
-      darkestValue <= lightestValue * (1 - RELATIVE_DROP_RATIO);
-    answers[row.question - 1] = isMarked ? darkestOption : undefined;
-    debugRows.push({
-      question: row.question,
-      readings,
-      darkestOption,
-      darkestValue: Math.round(darkestValue),
-      secondDarkestValue: Number.isFinite(secondDarkestValue) ? Math.round(secondDarkestValue) : -1,
-      lightestValue: Math.round(lightestValue),
-      isMarked,
-    });
+    return {
+      answers,
+      debug: { imageWidth: width, imageHeight: height, sampleSize, corners, rows: debugRows },
+    };
+  } finally {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(framebuffer);
+    gl.deleteTexture(texture);
+    await GLView.destroyContextAsync(gl);
   }
-
-  return {
-    answers,
-    debug: { imageWidth: width, imageHeight: height, sampleSize, corners, rows: debugRows },
-  };
 }
 
 export function unansweredRatio(answers: ScanAnswers, questionCount: number): number {

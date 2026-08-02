@@ -11,7 +11,7 @@ import { AlignmentGuide } from '../../../../components/gabarito/AlignmentGuide';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
-import { buildGabaritoLayout } from '../../../../lib/gabarito/layout';
+import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
 
 export default function ScanGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -22,7 +22,7 @@ export default function ScanGabarito() {
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
-  const layout = exam ? buildGabaritoLayout(exam.questionCount) : null;
+  const layout = exam ? buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount)) : null;
 
   const [permission, requestPermission] = useCameraPermissions();
   const [codeVerified, setCodeVerified] = useState(false);

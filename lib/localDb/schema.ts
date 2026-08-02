@@ -14,6 +14,8 @@ export type Exam = {
   students: { id: string; name: string; avatarUri?: string }[];
   /** Short human-readable code shown on the printed gabarito (e.g. "MAT006") so the teacher can visually confirm the sheet belongs to this exam. */
   code: string;
+  /** Number of alternatives per question on the gabarito: A-D or A-E. */
+  optionsCount: 4 | 5;
 };
 
 export type AnswerKey = {

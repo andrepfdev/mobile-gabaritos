@@ -10,7 +10,7 @@ import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
-import { buildGabaritoLayout } from '../../../../lib/gabarito/layout';
+import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
 import {
   AMBIGUOUS_RATIO_THRESHOLD,
   analyzeGabarito,
@@ -38,7 +38,7 @@ export default function ScanResult() {
     if (!exam || !answerKey || !photoUri) return;
     let cancelled = false;
     setStatus('loading');
-    const layout = buildGabaritoLayout(exam.questionCount);
+    const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
     analyzeGabarito(photoUri, layout)
       .then((result) => {
         if (cancelled) return;
@@ -130,6 +130,7 @@ export default function ScanResult() {
           answers={answers as Record<number, string>}
           answerKey={answerKey.answers}
           mode="review"
+          options={optionsForCount(exam.optionsCount)}
         />
 
         <PillButton title="Escanear outra" variant="outline" onPress={onScanAgain} />

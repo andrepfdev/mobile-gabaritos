@@ -1,5 +1,10 @@
 export const DEFAULT_OPTIONS = ['A', 'B', 'C', 'D', 'E'];
 
+/** Builds the A-D or A-E option letters for an exam's chosen number of alternatives. */
+export function optionsForCount(optionsCount: 4 | 5): string[] {
+  return DEFAULT_OPTIONS.slice(0, optionsCount);
+}
+
 /** A4 width in mm, used only as the reference for width-relative absolute measurements below. */
 const SHEET_WIDTH_MM = 210;
 
