@@ -462,8 +462,12 @@ class OmrOpencvModule : Module() {
         throw Exception("Dimensões canônicas inválidas.")
       }
 
+      // TEMPORARY profiling — native-side breakdown (ms), surfaced only in the
+      // "Diagnóstico (temporário)" debug card. Remove once the bottleneck is found.
+      val tDecodeStart = System.nanoTime()
       // Detect on BT.601; warp ink-aware gray so blue/partial pens read without breaking ArUco.
       val dual = loadDualGray(imageUri)
+      val decodeMs = (System.nanoTime() - tDecodeStart) / 1_000_000.0
       val detector = getDetector()
       // Most captures are upright — stop at first complete flip (huge latency win).
       val flipModes = listOf("none", "x", "y", "xy")
@@ -471,6 +475,7 @@ class OmrOpencvModule : Module() {
       var bestFlip = "none"
       var bestDetection: DetectionResult? = null
       var bestPartial: DetectionResult? = null
+      val tDetectStart = System.nanoTime()
 
       try {
         for (flipMode in flipModes) {
@@ -490,6 +495,7 @@ class OmrOpencvModule : Module() {
             if (ownsFlipped) flipped.release()
           }
         }
+        val detectMs = (System.nanoTime() - tDetectStart) / 1_000_000.0
 
         val detection = bestDetection
         if (detection == null) {
@@ -506,12 +512,15 @@ class OmrOpencvModule : Module() {
             "warpedWidth" to outWidth,
             "warpedHeight" to outHeight,
             "warpedGray" to ByteArray(0),
+            "decodeMs" to decodeMs,
+            "detectMs" to detectMs,
           )
         }
 
         val inkFlipped = applyFlip(dual.ink, bestFlip)
         val ownsInkFlip = inkFlipped !== dual.ink
         try {
+          val tWarpStart = System.nanoTime()
           val warped = warpToCanonical(
             inkFlipped,
             detection.markers,
@@ -526,11 +535,14 @@ class OmrOpencvModule : Module() {
             options.blXPct,
             options.blYPct,
           )
+          val warpMs = (System.nanoTime() - tWarpStart) / 1_000_000.0
           val normalized = Mat()
           try {
             // Mild CLAHE — enough for shadows, avoids crushing light blue ink.
+            val tClaheStart = System.nanoTime()
             val clahe = Imgproc.createCLAHE(1.8, Size(8.0, 8.0))
             clahe.apply(warped, normalized)
+            val claheMs = (System.nanoTime() - tClaheStart) / 1_000_000.0
             return@AsyncFunction mapOf(
               "available" to true,
               "complete" to true,
@@ -543,6 +555,10 @@ class OmrOpencvModule : Module() {
               "warpedWidth" to normalized.cols(),
               "warpedHeight" to normalized.rows(),
               "warpedGray" to matToGrayBytes(normalized),
+              "decodeMs" to decodeMs,
+              "detectMs" to detectMs,
+              "warpMs" to warpMs,
+              "claheMs" to claheMs,
             )
           } finally {
             normalized.release()

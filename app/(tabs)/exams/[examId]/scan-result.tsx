@@ -117,6 +117,12 @@ export default function ScanResult() {
               {`Tempos: captura=${timings.captureMs}ms redimensionar=${timings.resizeMs}ms leitura=${timings.analyzeMs}ms total=${timings.totalMs}ms`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`leitura = nativo=${debug.nativeMs ?? '?'}ms + bolhas=${debug.bubblesMs ?? '?'}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`nativo = decode=${debug.decodeMs?.toFixed(0) ?? '?'}ms detect=${debug.detectMs?.toFixed(0) ?? '?'}ms warp=${debug.warpMs?.toFixed(0) ?? '?'}ms clahe=${debug.claheMs?.toFixed(0) ?? '?'}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
               {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px · flip=${debug.flipMode} · motor=${debug.motor}`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>

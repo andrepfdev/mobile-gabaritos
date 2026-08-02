@@ -40,6 +40,11 @@ export type NativeOmrWarpResult = {
   warpedHeight: number;
   /** Raw grayscale bytes (length = warpedWidth * warpedHeight), delivered as a real Uint8Array (no base64). */
   warpedGray: Uint8Array;
+  /** TEMPORARY profiling — native-side timing breakdown (ms), debug card only. */
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
 };
 
 export type ArucoFlipMode = 'none' | 'x' | 'y' | 'xy';

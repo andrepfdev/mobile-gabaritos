@@ -70,6 +70,14 @@ export type ScanDebugInfo = {
   motor: NativeArucoMotor;
   arucoIds: number[];
   arucoScore: number;
+  /** TEMPORARY profiling — split of the native round-trip vs the JS bubble read. */
+  nativeMs?: number;
+  bubblesMs?: number;
+  /** TEMPORARY profiling — native-side breakdown, only present on the OpenCV path. */
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
 };
 
 type PipelineHit = {
@@ -83,6 +91,12 @@ type PipelineHit = {
   arucoScore: number;
   arucoIds: number[];
   motor: NativeArucoMotor;
+  nativeMs?: number;
+  bubblesMs?: number;
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
 };
 
 function applyFlip(gray: Uint8Array, width: number, height: number, flipMode: ScanFlipMode): Uint8Array {
@@ -120,14 +134,19 @@ function equalizeGrayRough(gray: Uint8Array): Uint8Array {
 
 async function analyzeWithOpenCv(photoUri: string, layout: GabaritoLayout): Promise<PipelineHit> {
   const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
+  // TEMPORARY profiling — split native round-trip vs JS bubble read (debug card only).
+  const tNativeStart = Date.now();
   const hit = await detectAndWarpNativeOmr(photoUri, CANONICAL_WIDTH, canonicalHeight, layout.corners);
+  const nativeMs = Date.now() - tNativeStart;
 
+  const tBubblesStart = Date.now();
   const { answers, rows } = readBubblesOnCanonical(
     hit.warpedGray,
     hit.warpedWidth,
     hit.warpedHeight,
     layout,
   );
+  const bubblesMs = Date.now() - tBubblesStart;
 
   return {
     answers,
@@ -140,6 +159,12 @@ async function analyzeWithOpenCv(photoUri: string, layout: GabaritoLayout): Prom
     arucoScore: hit.score,
     arucoIds: hit.ids,
     motor: 'OpenCV-ArUco',
+    nativeMs,
+    bubblesMs,
+    decodeMs: hit.decodeMs,
+    detectMs: hit.detectMs,
+    warpMs: hit.warpMs,
+    claheMs: hit.claheMs,
   };
 }
 
@@ -262,6 +287,12 @@ export async function analyzeGabarito(
       motor: best.motor,
       arucoIds: best.arucoIds,
       arucoScore: best.arucoScore,
+      nativeMs: best.nativeMs,
+      bubblesMs: best.bubblesMs,
+      decodeMs: best.decodeMs,
+      detectMs: best.detectMs,
+      warpMs: best.warpMs,
+      claheMs: best.claheMs,
     },
   };
 }

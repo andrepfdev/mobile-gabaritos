@@ -48,6 +48,11 @@ export type NativeOmrWarpHit = {
   warpedWidth: number;
   warpedHeight: number;
   warpedGray: Uint8Array;
+  /** TEMPORARY profiling — native-side timing breakdown (ms), debug card only. */
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
 };
 
 type LayoutCornerPct = {
@@ -229,5 +234,9 @@ export async function detectAndWarpNativeOmr(
     warpedWidth: result.warpedWidth,
     warpedHeight: result.warpedHeight,
     warpedGray,
+    decodeMs: result.decodeMs,
+    detectMs: result.detectMs,
+    warpMs: result.warpMs,
+    claheMs: result.claheMs,
   };
 }
