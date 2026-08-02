@@ -128,8 +128,8 @@ export default function ScanGabarito() {
           <Text variant="caption" weight="medium">
             {codeError ??
               (codeVerified
-                ? `Código confirmado: ${exam.code}. Agora alinhe os 4 cantos da folha com o guia.`
-                : 'Alinhe a folha e aponte o QR code para a câmera')}
+                ? `Código confirmado: ${exam.code}. Agora alinhe os 4 marcadores dentro da área de captura.`
+                : 'Alinhe a folha e aponte a câmera code para o QR da prova.')}
           </Text>
         </Card>
 
