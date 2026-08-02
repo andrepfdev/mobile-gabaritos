@@ -60,7 +60,14 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
             {`Código: ${exam.code}`}
           </RNText>
         </View>
-        <QRCode value={exam.id} size={width * 0.085} color={colors.dark} backgroundColor={colors.white} />
+        {/* Pulled well away from the right edge (not just flush right) — the QR's dense module
+            pattern is much darker/denser than the tiny corner mark near it, and the corner
+            detection in lib/gabarito/scan.ts searches a generous quadrant of the photo (not just
+            the sheet's own corner), so a QR sitting right next to the corner mark can out-compete
+            it and pull detection toward the QR instead of the real mark. */}
+        <View style={{ marginRight: width * 0.26 }}>
+          <QRCode value={exam.id} size={width * 0.085} color={colors.dark} backgroundColor={colors.white} />
+        </View>
       </View>
       <View style={[styles.headerDivider, { top: layout.headerHeightPct * height, width }]} />
 
