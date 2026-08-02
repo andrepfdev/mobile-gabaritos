@@ -124,11 +124,11 @@ export default function ScanGabarito() {
       />
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
-        <Card variant={codeVerified ? 'pink' : 'cream'} style={styles.tipCard}>
+        <Card variant={codeVerified ? 'pink' : 'light'} style={styles.tipCard}>
           <Text variant="caption" weight="medium">
             {codeError ??
               (codeVerified
-                ? `Código: ${exam.code}. Agora alinhe os 4 marcadores dentro da área de captura.`
+                ? `Código: ${exam.code}. Agora alinhe os 4 marcadores por dentro da área de captura.`
                 : 'Alinhe a folha e aponte a câmera code para o QR da prova.')}
           </Text>
         </Card>
