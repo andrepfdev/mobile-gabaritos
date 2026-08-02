@@ -39,7 +39,7 @@ export default function ScanGabarito() {
         setCodeError(null);
       } else {
         setCodeVerified(false);
-        setCodeError('Esta folha pertence a outra prova.');
+        setCodeError('Este gabarito pertence a outra prova.');
       }
     },
     [exam],

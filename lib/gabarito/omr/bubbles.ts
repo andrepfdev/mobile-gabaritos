@@ -40,56 +40,12 @@ function mean(values: number[]): number {
   return sum / values.length;
 }
 
-function sampleDiskValues(
-  gray: Uint8Array,
-  width: number,
-  height: number,
-  cx: number,
-  cy: number,
-  radius: number,
-): number[] {
-  const r = Math.max(2, Math.round(radius));
-  const values: number[] = [];
-  const r2 = r * r;
-  const x0 = Math.max(0, Math.floor(cx - r));
-  const y0 = Math.max(0, Math.floor(cy - r));
-  const x1 = Math.min(width - 1, Math.ceil(cx + r));
-  const y1 = Math.min(height - 1, Math.ceil(cy + r));
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      if (dx * dx + dy * dy <= r2) values.push(gray[y * width + x]);
-    }
-  }
-  return values;
-}
-
-function sampleAnnulusMean(
-  gray: Uint8Array,
-  width: number,
-  height: number,
-  cx: number,
-  cy: number,
-  innerR: number,
-  outerR: number,
-): number {
-  const values: number[] = [];
-  const in2 = innerR * innerR;
-  const out2 = outerR * outerR;
-  const x0 = Math.max(0, Math.floor(cx - outerR));
-  const y0 = Math.max(0, Math.floor(cy - outerR));
-  const x1 = Math.min(width - 1, Math.ceil(cx + outerR));
-  const y1 = Math.min(height - 1, Math.ceil(cy + outerR));
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
-      if (d2 > in2 && d2 <= out2) values.push(gray[y * width + x]);
-    }
-  }
-  if (values.length === 0) return 245;
-  return mean(values);
-}
+// Gray values are always 0-255 bytes. A 256-bucket histogram lets scoreBubble compute the
+// same "mean of the darkest N pixels" that `disk.slice().sort()` used to (counting sort is
+// exact for bounded integers, not an approximation) without allocating/sorting an array per
+// search position — that per-position allocation was the actual bottleneck (~3.6-3.8s per
+// scan), not the native OpenCV detect/warp/CLAHE step (~170ms).
+const diskHist = new Int32Array(256);
 
 function scoreBubble(
   gray: Uint8Array,
@@ -101,6 +57,13 @@ function scoreBubble(
   searchRadius: number,
 ): { fill: number; gray: number; omrRatio: number } {
   const step = Math.max(2, Math.round(searchRadius / 3));
+  const r = Math.max(2, Math.round(radius));
+  const r2 = r * r;
+  const innerR = radius * 1.15;
+  const outerR = radius * 1.9;
+  const in2 = innerR * innerR;
+  const out2 = outerR * outerR;
+
   let bestFill = -Infinity;
   let bestGray = 255;
   let bestOmr = 0;
@@ -110,24 +73,65 @@ function scoreBubble(
       if (dx * dx + dy * dy > searchRadius * searchRadius) continue;
       const cx = cx0 + dx;
       const cy = cy0 + dy;
-      const disk = sampleDiskValues(gray, width, height, cx, cy, radius);
-      if (disk.length < 8) continue;
 
-      const paper = sampleAnnulusMean(gray, width, height, cx, cy, radius * 1.15, radius * 1.9);
+      diskHist.fill(0);
+      let diskCount = 0;
+      let diskSum = 0;
+      const dx0 = Math.max(0, Math.floor(cx - r));
+      const dy0 = Math.max(0, Math.floor(cy - r));
+      const dx1 = Math.min(width - 1, Math.ceil(cx + r));
+      const dy1 = Math.min(height - 1, Math.ceil(cy + r));
+      for (let y = dy0; y <= dy1; y++) {
+        const ddy = y - cy;
+        const ddy2 = ddy * ddy;
+        for (let x = dx0; x <= dx1; x++) {
+          const ddx = x - cx;
+          if (ddx * ddx + ddy2 <= r2) {
+            const v = gray[y * width + x];
+            diskHist[v]++;
+            diskCount++;
+            diskSum += v;
+          }
+        }
+      }
+      if (diskCount < 8) continue;
+
+      let annCount = 0;
+      let annSum = 0;
+      const ax0 = Math.max(0, Math.floor(cx - outerR));
+      const ay0 = Math.max(0, Math.floor(cy - outerR));
+      const ax1 = Math.min(width - 1, Math.ceil(cx + outerR));
+      const ay1 = Math.min(height - 1, Math.ceil(cy + outerR));
+      for (let y = ay0; y <= ay1; y++) {
+        const ady2 = (y - cy) * (y - cy);
+        for (let x = ax0; x <= ax1; x++) {
+          const adx = x - cx;
+          const d2 = adx * adx + ady2;
+          if (d2 > in2 && d2 <= out2) {
+            annSum += gray[y * width + x];
+            annCount++;
+          }
+        }
+      }
+      const paper = annCount === 0 ? 245 : annSum / annCount;
+
       const thr = Math.min(200, Math.max(95, paper - 24));
       let dark = 0;
-      let sum = 0;
-      for (const v of disk) {
-        sum += v;
-        if (v < thr) dark++;
-      }
-      const omrRatio = dark / disk.length;
-      const sorted = disk.slice().sort((a, b) => a - b);
-      const coreN = Math.max(1, Math.round(sorted.length * CORE_FRACTION));
+      for (let v = 0; v < 256 && v < thr; v++) dark += diskHist[v];
+      const omrRatio = dark / diskCount;
+
+      const coreN = Math.max(1, Math.round(diskCount * CORE_FRACTION));
       let coreSum = 0;
-      for (let i = 0; i < coreN; i++) coreSum += sorted[i];
+      let remaining = coreN;
+      for (let v = 0; v < 256 && remaining > 0; v++) {
+        const c = diskHist[v];
+        if (c === 0) continue;
+        const take = Math.min(remaining, c);
+        coreSum += v * take;
+        remaining -= take;
+      }
       const core = coreSum / coreN;
-      const inner = sum / disk.length;
+      const inner = diskSum / diskCount;
       const coreDark = (255 - core) / 255;
       const darkness = (255 - inner) / 255;
       const contrast = Math.max(0, (paper - core) / 255);

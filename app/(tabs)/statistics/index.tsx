@@ -1,63 +1,31 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../../components/ui/Text';
-import { StatCard } from '../../../components/ui/StatCard';
-import { LineChart } from '../../../components/ui/LineChart';
+import { Card } from '../../../components/ui/Card';
 import { colors, spacing } from '../../../theme/tokens';
-import { statisticsSummary, performanceOverTime } from '../../../lib/mockData';
 
 export default function Statistics() {
-  const router = useRouter();
-
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="h1" weight="bold" style={styles.header}>
-          Estatísticas
-        </Text>
+      <Text variant="h1" weight="bold" style={styles.header}>
+        Estatísticas
+      </Text>
 
-        <View style={styles.row}>
-          <StatCard
-            variant="light"
-            tag={{ label: statisticsSummary.examsTodayTag }}
-            value={String(statisticsSummary.examsToday)}
-            label="Provas hoje"
-            onPress={() => router.push('/exams')}
-          />
-          <View style={styles.gap} />
-          <StatCard
-            variant="pink"
-            tag={{ label: statisticsSummary.pendingTag }}
-            value={String(statisticsSummary.pendingCorrections)}
-            label="Correções pendentes"
-          />
-        </View>
-
-        <StatCard
-          variant="dark"
-          value={statisticsSummary.avgTimePerExam}
-          label="Por prova esta semana"
-          fullWidth
-        >
-          <Text variant="caption" color="#c9c9c9" style={styles.activityLabel}>
-            {`${statisticsSummary.weeklyActivityPercent}% de atividade`}
+      <View style={styles.center}>
+        <Card variant="dark" style={styles.card}>
+          <View style={styles.iconWrap}>
+            <Ionicons name="bar-chart-outline" size={32} color={colors.coral} />
+          </View>
+          <Text variant="h2" weight="bold" color={colors.white} style={styles.title}>
+            Em construção
           </Text>
-        </StatCard>
-
-        <View style={styles.spacer} />
-
-        <StatCard variant="dark" fullWidth>
-          <Text variant="body" weight="medium" color={colors.white}>
-            Desempenho médio
+          <Text variant="body" color="#c9c9c9" style={styles.subtitle}>
+            Estamos preparando estatísticas reais sobre suas turmas e provas. Volte em breve!
           </Text>
-          <Text variant="hero" weight="bold" color={colors.white} style={styles.chartValue}>
-            {`${statisticsSummary.completionPercent} pontos`}
-          </Text>
-          <LineChart data={performanceOverTime} lineColor={colors.coral} />
-        </StatCard>
-      </ScrollView>
+        </Card>
+      </View>
     </SafeAreaView>
   );
 }
@@ -67,27 +35,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgCream,
   },
-  content: {
-    padding: spacing.lg,
+  header: {
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  center: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingBottom: 140,
   },
-  header: {
+  card: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.dark,
+    borderWidth: 1,
+    borderColor: '#4a4a4a',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: spacing.md,
   },
-  row: {
-    flexDirection: 'row',
-    marginBottom: spacing.md,
+  title: {
+    marginBottom: spacing.sm,
   },
-  gap: {
-    width: spacing.md,
-  },
-  activityLabel: {
-    marginTop: spacing.sm,
-  },
-  spacer: {
-    height: spacing.md,
-  },
-  chartValue: {
-    marginBottom: spacing.md,
+  subtitle: {
+    textAlign: 'center',
   },
 });
