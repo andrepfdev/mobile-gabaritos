@@ -14,11 +14,14 @@ import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/l
 import {
   AMBIGUOUS_RATIO_THRESHOLD,
   analyzeGabarito,
+  GabaritoScanError,
   ScanAnswers,
   ScanDebugInfo,
   scoreAgainstAnswerKey,
   unansweredRatio,
 } from '../../../../lib/gabarito/scan';
+
+type PixelPoint = { x: number; y: number };
 
 export default function ScanResult() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -33,11 +36,18 @@ export default function ScanResult() {
   const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
   const [answers, setAnswers] = useState<ScanAnswers>({});
   const [debug, setDebug] = useState<ScanDebugInfo | null>(null);
+  const [errorDebug, setErrorDebug] = useState<{
+    imageWidth?: number;
+    imageHeight?: number;
+    corners?: Partial<{ topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }>;
+    message: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!exam || !answerKey || !photoUri) return;
     let cancelled = false;
     setStatus('loading');
+    setErrorDebug(null);
     const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
     analyzeGabarito(photoUri, layout)
       .then((result) => {
@@ -46,8 +56,12 @@ export default function ScanResult() {
         setDebug(result.debug);
         setStatus('done');
       })
-      .catch(() => {
-        if (!cancelled) setStatus('error');
+      .catch((error) => {
+        if (cancelled) return;
+        if (error instanceof GabaritoScanError) {
+          setErrorDebug({ imageWidth: error.imageWidth, imageHeight: error.imageHeight, corners: error.corners, message: error.message });
+        }
+        setStatus('error');
       });
     return () => {
       cancelled = true;
@@ -88,6 +102,35 @@ export default function ScanResult() {
             Alinhe a folha às marcas e tente novamente.
           </Text>
           <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
+
+          {/* TEMPORARY diagnostic block — same reasoning as the one below for a successful scan,
+              but for the failure path: without this we'd have zero visibility into *why* corner
+              detection failed or looked implausible on a given photo. */}
+          {errorDebug ? (
+            <Card variant="grayLight" style={styles.debugCard}>
+              <Text variant="body" weight="bold">
+                Diagnóstico (temporário)
+              </Text>
+              <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+                {errorDebug.message}
+              </Text>
+              {errorDebug.imageWidth ? (
+                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+                  {`Foto: ${errorDebug.imageWidth}x${errorDebug.imageHeight}px`}
+                </Text>
+              ) : null}
+              {errorDebug.corners ? (
+                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+                  {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)
+                    .map((key) => {
+                      const point = errorDebug.corners?.[key];
+                      return `${key}: ${point ? `(${Math.round(point.x)},${Math.round(point.y)})` : 'não encontrado'}`;
+                    })
+                    .join(' ')}
+                </Text>
+              ) : null}
+            </Card>
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     );

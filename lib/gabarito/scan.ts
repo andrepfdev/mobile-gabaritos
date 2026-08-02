@@ -20,6 +20,22 @@ export const AMBIGUOUS_RATIO_THRESHOLD = 0.4;
 export type ScanAnswers = Record<number, string | undefined>;
 type PixelPoint = { x: number; y: number };
 
+/** Thrown when corner detection fails or looks unreliable — carries whatever was measured so the
+ * error screen can still show diagnostic numbers instead of failing completely blind. */
+export class GabaritoScanError extends Error {
+  imageWidth?: number;
+  imageHeight?: number;
+  corners?: Partial<{ topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }>;
+
+  constructor(message: string, info?: { imageWidth: number; imageHeight: number; corners: GabaritoScanError['corners'] }) {
+    super(message);
+    this.name = 'GabaritoScanError';
+    this.imageWidth = info?.imageWidth;
+    this.imageHeight = info?.imageHeight;
+    this.corners = info?.corners;
+  }
+}
+
 // TEMPORARY diagnostic data — remove once the pixel-reading pipeline is confirmed working
 // end-to-end on a real device. Lets scan-result.tsx show raw numbers instead of guessing.
 export type ScanDebugInfo = {
@@ -247,9 +263,34 @@ export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout):
     const bottomRight = findCornerMark(gl, { x: width * 0.5, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
 
     if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
-      throw new Error('Não foi possível localizar as marcas de canto do gabarito na foto.');
+      throw new GabaritoScanError('Não foi possível localizar as marcas de canto do gabarito na foto.', {
+        imageWidth: width,
+        imageHeight: height,
+        corners: { topLeft: topLeft ?? undefined, topRight: topRight ?? undefined, bottomLeft: bottomLeft ?? undefined, bottomRight: bottomRight ?? undefined },
+      });
     }
     const corners = { topLeft, topRight, bottomLeft, bottomRight };
+
+    // A compact dark object elsewhere in the photo (a backlit keyboard, a dark phone case, etc.)
+    // can occasionally out-compete the actual corner mark within its search quadrant — the
+    // refinement passes narrow the search window but don't verify *what* was found. This only
+    // rejects genuinely extreme/degenerate quads (a real steep-but-valid handheld angle can still
+    // easily reach ~2-2.5x without the detection being wrong, so the bar is set high on purpose —
+    // an earlier, tighter threshold here was rejecting perfectly good photos).
+    const leftLength = Math.hypot(bottomLeft.x - topLeft.x, bottomLeft.y - topLeft.y);
+    const rightLength = Math.hypot(bottomRight.x - topRight.x, bottomRight.y - topRight.y);
+    const topLength = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
+    const bottomLength = Math.hypot(bottomRight.x - bottomLeft.x, bottomRight.y - bottomLeft.y);
+    const MAX_OPPOSITE_SIDE_RATIO = 3.5;
+    const sideRatio = Math.max(leftLength, rightLength) / Math.max(1, Math.min(leftLength, rightLength));
+    const topBottomRatio = Math.max(topLength, bottomLength) / Math.max(1, Math.min(topLength, bottomLength));
+    if (sideRatio > MAX_OPPOSITE_SIDE_RATIO || topBottomRatio > MAX_OPPOSITE_SIDE_RATIO) {
+      throw new GabaritoScanError('Não foi possível localizar as marcas de canto do gabarito na foto.', {
+        imageWidth: width,
+        imageHeight: height,
+        corners,
+      });
+    }
 
     // Use the detected top edge span as the sheet's effective on-photo width, to size sample
     // windows relative to the sheet's actual scale in this photo (not the raw photo dimensions).
