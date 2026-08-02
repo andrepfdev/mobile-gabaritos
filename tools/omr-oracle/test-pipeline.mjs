@@ -611,7 +611,7 @@ function scoreBubble(gray, width, height, cx0, cy0, radius, searchRadius) {
       }
       if (vals.length < 8) continue;
       const pap = paper.length ? paper.reduce((a, b) => a + b, 0) / paper.length : 245;
-      const thr = Math.min(210, Math.max(100, pap - 18));
+      const thr = Math.min(200, Math.max(95, pap - 24));
       let dark = 0;
       let sum = 0;
       for (const v of vals) {
@@ -625,11 +625,11 @@ function scoreBubble(gray, width, height, cx0, cy0, radius, searchRadius) {
       for (let i = 0; i < n; i++) coreSum += vals[i];
       const core = coreSum / n;
       const coreDark = (255 - core) / 255;
+      const darkness = (255 - sum / vals.length) / 255;
       const contrast = Math.max(0, (pap - core) / 255);
-      const softDensity = Math.max(0, Math.min(1, (pap - core) / 55));
       const fill = Math.max(
         0,
-        Math.min(1, 0.32 * omrRatio + 0.28 * coreDark + 0.22 * contrast + 0.18 * softDensity),
+        Math.min(1, 0.45 * omrRatio + 0.25 * coreDark + 0.2 * contrast + 0.1 * darkness),
       );
       if (fill > bestFill) {
         bestFill = fill;
@@ -665,9 +665,9 @@ function readAnswers(gray, width, height, layout, key) {
   const emptyP90 = sortedOmr[Math.floor(sortedOmr.length * 0.9)] ?? 0;
   const fillP50 = sortedFills[Math.floor(sortedFills.length * 0.5)] ?? 0;
   const fillP85 = sortedFills[Math.floor(sortedFills.length * 0.85)] ?? 0;
-  const markOmr = Math.max(0.12, Math.min(0.22, emptyP90 + 0.07));
-  const minMarkFill = Math.max(0.08, Math.min(0.2, fillP50 + 0.04));
-  const softFillFloor = Math.max(0.1, fillP85 * 0.55);
+  const markOmr = Math.max(0.16, emptyP90 + 0.1);
+  const minMarkFill = Math.max(0.11, Math.min(0.26, fillP50 + 0.055));
+  const softFillFloor = Math.max(0.14, (sortedFills[Math.floor(sortedFills.length * 0.9)] ?? 0) * 0.62);
 
   let correct = 0;
   const got = [];
@@ -693,18 +693,18 @@ function readAnswers(gray, width, height, layout, key) {
     }
     const doubleMark =
       secondIdx >= 0 &&
-      margin < 0.12 &&
-      fills[secondIdx] >= Math.max(minMarkFill, fills[best] * 0.7) &&
-      omrRatios[secondIdx] >= 0.32;
+      margin < 0.1 &&
+      fills[secondIdx] >= Math.max(minMarkFill, fills[best] * 0.72) &&
+      omrRatios[secondIdx] >= 0.3;
     const solid =
-      omrRatios[best] >= markOmr && fills[best] >= minMarkFill && margin >= 0.055 && z >= 0.55;
+      omrRatios[best] >= markOmr && fills[best] >= minMarkFill && margin >= 0.07 && z >= 0.7;
     const soft =
       fills[best] >= softFillFloor &&
-      margin >= 0.055 * 1.15 &&
-      z >= 0.7 &&
-      grays[best] <= 225 &&
-      (omrRatios[best] >= 0.078 || fills[best] >= softFillFloor * 1.05);
-    const marked = !doubleMark && grays[best] <= 225 && (solid || soft) ? row.options[best].option : undefined;
+      omrRatios[best] >= 0.16 * 0.85 &&
+      margin >= 0.07 * 1.35 &&
+      z >= 0.95 &&
+      grays[best] <= 220;
+    const marked = !doubleMark && grays[best] <= 220 && (solid || soft) ? row.options[best].option : undefined;
     got.push(marked);
     if (marked === key[row.question - 1]) correct++;
   }

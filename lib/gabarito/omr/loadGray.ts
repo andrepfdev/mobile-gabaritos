@@ -3,16 +3,14 @@ import { Buffer } from 'buffer';
 import jpeg from 'jpeg-js';
 
 /**
- * Ink-aware gray (matches native OpenCV path): min(R,G).
- * Blue ballpoint stays dark; BT.601 luminance washes blue toward paper white.
+ * BT.601 gray for JS ArUco / gate. Native Android warps a separate ink-aware
+ * buffer (min R,G) for bubbles — do not use min(R,G) here (hurts marker decode).
  */
 function rgbaToGray(data: Uint8Array | Buffer, width: number, height: number): Uint8Array {
   const gray = new Uint8Array(width * height);
   for (let i = 0; i < width * height; i++) {
     const o = i * 4;
-    const r = data[o];
-    const g = data[o + 1];
-    gray[i] = r < g ? r : g;
+    gray[i] = Math.round(0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2]);
   }
   return gray;
 }

@@ -95,7 +95,7 @@ Inspirado no fluxo do **ENEM/INEP** (digitalização + reconhecimento óptico do
 | Scanner OMR com marcas de registro | ArUco DICT_4X4 nos 4 cantos da grade |
 | Ambiente controlado / digitalização | Gate 4/4 + captura JPEG único + fundo claro |
 | Caneta preta, círculo cheio | Preta ou azul; aceita preenchimento parcial (core + soft density) |
-| Densidade de tinta na bolha | Gray `min(R,G)` (azul escura) + fill-ratio + CLAHE no canônico |
+| Densidade de tinta na bolha | ArUco em BT.601; bolhas em `min(R,G)` + core/fill + CLAHE leve |
 | Duas marcas → anula questão | Dupla marcação → em branco (nunca chute) |
 | TRI na nota | % simples de acertos (escopo escolar) |
 

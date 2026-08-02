@@ -12,21 +12,19 @@ export type BubbleRowDebug = {
 };
 
 /**
- * Phone OMR tuned for real student marks (priority A — accept light/partial):
- * - blue or black pen (ink-aware gray upstream)
- * - partial human fill (core darkness + soft density)
- * - empty calibrated from the sheet
- * - two strong marks → blank (void)
+ * OMR bubble reader — restores pre-ink accuracy while supporting blue/partial marks:
+ * - native path supplies ink-aware gray (min R,G) after ArUco warp
+ * - score = dark density + darkest core (partial fill)
+ * - clear winner preferred; soft path only with strong margin/z
+ * - two close strong marks → blank
  */
-const MIN_FILL_MARGIN = 0.055;
-const MIN_Z_SCORE = 0.55;
-const MAX_MARK_GRAY = 225;
-/** Soft absolute floor — light blue / ~half-filled still clears this. */
-const MIN_OMR_RATIO = 0.12;
-const DOUBLE_MARK_RATIO = 0.32;
+const MIN_FILL_MARGIN = 0.07;
+const MIN_Z_SCORE = 0.7;
+const MAX_MARK_GRAY = 220;
+const MIN_OMR_RATIO = 0.16;
+const DOUBLE_MARK_RATIO = 0.3;
 const SAMPLE_RADIUS_FACTOR = 0.55;
 const REFINE_PITCH_FRACTION = 0.12;
-/** Darkest fraction of the disk — catches scribble / incomplete fill. */
 const CORE_FRACTION = 0.35;
 
 function percentile(sorted: number[], p: number): number {
@@ -93,9 +91,6 @@ function sampleAnnulusMean(
   return mean(values);
 }
 
-/**
- * Mark score: soft OMR density + core (darkest pixels) so partial / light ink still wins.
- */
 function scoreBubble(
   gray: Uint8Array,
   width: number,
@@ -119,8 +114,7 @@ function scoreBubble(
       if (disk.length < 8) continue;
 
       const paper = sampleAnnulusMean(gray, width, height, cx, cy, radius * 1.15, radius * 1.9);
-      // Softer vs paper: light blue after CLAHE may sit only ~18–30 levels below paper.
-      const thr = Math.min(210, Math.max(100, paper - 18));
+      const thr = Math.min(200, Math.max(95, paper - 24));
       let dark = 0;
       let sum = 0;
       for (const v of disk) {
@@ -137,12 +131,10 @@ function scoreBubble(
       const coreDark = (255 - core) / 255;
       const darkness = (255 - inner) / 255;
       const contrast = Math.max(0, (paper - core) / 255);
-      const softDensity = Math.max(0, Math.min(1, (paper - core) / 55));
-      // Core + soft density help light/partial ink; omrRatio stays pure dark-pixel density
-      // (never inflate with softDensity — that falsely triggers double-mark voids).
+      // Density dominates (black pen); core+contrast lift blue/partial without shadow bias.
       const fill = Math.max(
         0,
-        Math.min(1, 0.32 * omrRatio + 0.28 * coreDark + 0.22 * contrast + 0.18 * softDensity),
+        Math.min(1, 0.45 * omrRatio + 0.25 * coreDark + 0.2 * contrast + 0.1 * darkness),
       );
       if (fill > bestFill) {
         bestFill = fill;
@@ -158,9 +150,6 @@ function scoreBubble(
   return { fill: bestFill, gray: bestGray, omrRatio: bestOmr };
 }
 
-/**
- * Reads bubbles on a canonical sheet (post-warp, ideally CLAHE + ink-aware gray).
- */
 export function readBubblesOnCanonical(
   gray: Uint8Array,
   width: number,
@@ -216,12 +205,11 @@ export function readBubblesOnCanonical(
   const emptyP90 = percentile(sortedOmr, 0.9);
   const sortedFills = allFills.slice().sort((a, b) => a - b);
   const fillP50 = percentile(sortedFills, 0.5);
-  const fillP85 = percentile(sortedFills, 0.85);
+  const fillP90 = percentile(sortedFills, 0.9);
 
-  // Adaptive floors: sheet with light pens lowers the bar; still above empty baseline.
-  const markOmr = Math.max(MIN_OMR_RATIO, Math.min(0.22, emptyP90 + 0.07));
-  const minMarkFill = Math.max(0.08, Math.min(0.2, fillP50 + 0.04));
-  const softFillFloor = Math.max(0.1, fillP85 * 0.55);
+  const markOmr = Math.max(MIN_OMR_RATIO, emptyP90 + 0.1);
+  const minMarkFill = Math.max(0.11, Math.min(0.26, fillP50 + 0.055));
+  const softFillFloor = Math.max(0.14, fillP90 * 0.62);
   const minMargin = MIN_FILL_MARGIN;
 
   const answers: ScanAnswers = {};
@@ -249,24 +237,27 @@ export function readBubblesOnCanonical(
     if (!Number.isFinite(second)) second = 0;
 
     const margin = fills[bestIdx] - second;
-    const zScore = std > 0.012 ? (fills[bestIdx] - meanFill) / std : fills[bestIdx] - meanFill > 0.08 ? 3 : 0;
+    const zScore = std > 0.015 ? (fills[bestIdx] - meanFill) / std : fills[bestIdx] - meanFill > 0.1 ? 3 : 0;
 
-    // Void only when two real competitors are close — never void a clear winner.
     const doubleMark =
       secondIdx >= 0 &&
-      margin < 0.12 &&
-      fills[secondIdx] >= Math.max(minMarkFill, fills[bestIdx] * 0.7) &&
+      margin < 0.1 &&
+      fills[secondIdx] >= Math.max(minMarkFill, fills[bestIdx] * 0.72) &&
       omrRatios[secondIdx] >= DOUBLE_MARK_RATIO;
 
-    // Priority A: strong relative winner can pass with softer absolute density (light/partial ink).
     const solidMark =
-      omrRatios[bestIdx] >= markOmr && fills[bestIdx] >= minMarkFill && margin >= minMargin && zScore >= MIN_Z_SCORE;
+      omrRatios[bestIdx] >= markOmr &&
+      fills[bestIdx] >= minMarkFill &&
+      margin >= minMargin &&
+      zScore >= MIN_Z_SCORE;
+
+    // Blue/partial: only if clearly the unique winner (strong margin+z).
     const softMark =
       fills[bestIdx] >= softFillFloor &&
-      margin >= minMargin * 1.15 &&
-      zScore >= MIN_Z_SCORE + 0.15 &&
-      grays[bestIdx] <= MAX_MARK_GRAY &&
-      (omrRatios[bestIdx] >= MIN_OMR_RATIO * 0.65 || fills[bestIdx] >= softFillFloor * 1.05);
+      omrRatios[bestIdx] >= MIN_OMR_RATIO * 0.85 &&
+      margin >= minMargin * 1.35 &&
+      zScore >= MIN_Z_SCORE + 0.25 &&
+      grays[bestIdx] <= MAX_MARK_GRAY;
 
     const isMarked = !doubleMark && grays[bestIdx] <= MAX_MARK_GRAY && (solidMark || softMark);
 

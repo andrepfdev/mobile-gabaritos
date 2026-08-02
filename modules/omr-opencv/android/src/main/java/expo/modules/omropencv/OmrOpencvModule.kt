@@ -122,10 +122,26 @@ class OmrOpencvModule : Module() {
     return transformed
   }
 
+  private data class DualGray(
+    /** BT.601 — stable ArUco (min(R,G) adds chroma noise and breaks detection). */
+    val detect: Mat,
+    /** min(R,G) — blue/black pen stays dark for bubble OMR only. */
+    val ink: Mat,
+  )
+
+  private fun rgbaToDetectGray(src: Mat): Mat {
+    val gray = Mat()
+    when (src.channels()) {
+      1 -> src.copyTo(gray)
+      3 -> Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGB2GRAY)
+      else -> Imgproc.cvtColor(src, gray, Imgproc.COLOR_RGBA2GRAY)
+    }
+    return gray
+  }
+
   /**
-   * Ink-aware grayscale: blue ballpoint looks almost white under BT.601 because
-   * luminance weights B lightly. Using min(R,G) keeps blue and black pens dark
-   * while paper stays bright — critical for phone OMR of ENEM-style sheets.
+   * Ink-aware grayscale for bubble sampling only. Blue ballpoint looks almost white
+   * under BT.601; min(R,G) keeps blue and black pens dark on paper.
    */
   private fun rgbaToInkGray(src: Mat): Mat {
     if (src.channels() == 1) {
@@ -144,7 +160,7 @@ class OmrOpencvModule : Module() {
     }
   }
 
-  private fun loadGrayMat(imageUri: String): Mat {
+  private fun loadDualGray(imageUri: String): DualGray {
     openInputStream(imageUri).use { stream ->
       val bytes = stream.readBytes()
       val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
@@ -153,12 +169,19 @@ class OmrOpencvModule : Module() {
       val rgba = Mat()
       try {
         Utils.bitmapToMat(bitmap, rgba)
-        return rgbaToInkGray(rgba)
+        return DualGray(detect = rgbaToDetectGray(rgba), ink = rgbaToInkGray(rgba))
       } finally {
         rgba.release()
         if (!bitmap.isRecycled) bitmap.recycle()
       }
     }
+  }
+
+  /** Gate / detect-only: BT.601 gray (fast, ArUco-stable). */
+  private fun loadGrayMat(imageUri: String): Mat {
+    val dual = loadDualGray(imageUri)
+    dual.ink.release()
+    return dual.detect
   }
 
   private fun applyFlip(src: Mat, flipMode: String): Mat {
@@ -427,32 +450,29 @@ class OmrOpencvModule : Module() {
         throw Exception("Dimensões canônicas inválidas.")
       }
 
-      val base = loadGrayMat(imageUri)
+      // Detect on BT.601; warp ink-aware gray so blue/partial pens read without breaking ArUco.
+      val dual = loadDualGray(imageUri)
       val detector = buildDetector()
+      // Most captures are upright — stop at first complete flip (huge latency win).
       val flipModes = listOf("none", "x", "y", "xy")
 
       var bestFlip = "none"
       var bestDetection: DetectionResult? = null
-      var bestGray: Mat? = null
       var bestPartial: DetectionResult? = null
 
       try {
         for (flipMode in flipModes) {
-          val flipped = applyFlip(base, flipMode)
-          val ownsFlipped = flipped !== base
+          val flipped = applyFlip(dual.detect, flipMode)
+          val ownsFlipped = flipped !== dual.detect
           try {
             val detection = detectRobust(flipped, detector)
-            val partial = bestPartial
-            if (partial == null || detection.score > partial.score) {
+            if (bestPartial == null || detection.score > bestPartial.score) {
               bestPartial = detection
             }
-            if (!isComplete(detection)) continue
-            val currentBest = bestDetection
-            if (currentBest == null || detection.score > currentBest.score) {
-              bestGray?.release()
+            if (isComplete(detection)) {
               bestDetection = detection
               bestFlip = flipMode
-              bestGray = flipped.clone()
+              break
             }
           } finally {
             if (ownsFlipped) flipped.release()
@@ -460,15 +480,14 @@ class OmrOpencvModule : Module() {
         }
 
         val detection = bestDetection
-        val gray = bestGray
-        if (detection == null || gray == null) {
+        if (detection == null) {
           val partialMarkers = bestPartial?.markers ?: emptyMap()
           return@AsyncFunction mapOf(
             "available" to true,
             "complete" to false,
             "errorCode" to "incomplete_markers",
-            "width" to base.cols(),
-            "height" to base.rows(),
+            "width" to dual.detect.cols(),
+            "height" to dual.detect.rows(),
             "markers" to markersToList(partialMarkers),
             "flipMode" to "none",
             "arucoScore" to (bestPartial?.score ?: 0.0),
@@ -478,9 +497,11 @@ class OmrOpencvModule : Module() {
           )
         }
 
+        val inkFlipped = applyFlip(dual.ink, bestFlip)
+        val ownsInkFlip = inkFlipped !== dual.ink
         try {
           val warped = warpToCanonical(
-            gray,
+            inkFlipped,
             detection.markers,
             outWidth,
             outHeight,
@@ -493,18 +514,17 @@ class OmrOpencvModule : Module() {
             options.blXPct,
             options.blYPct,
           )
-          // ENEM-like scanners normalize illumination before mark density; CLAHE on canonical
-          // sheet makes bubble fill-ratio stable under phone shadows.
           val normalized = Mat()
           try {
-            val clahe = Imgproc.createCLAHE(2.0, Size(8.0, 8.0))
+            // Mild CLAHE — enough for shadows, avoids crushing light blue ink.
+            val clahe = Imgproc.createCLAHE(1.8, Size(8.0, 8.0))
             clahe.apply(warped, normalized)
             return@AsyncFunction mapOf(
               "available" to true,
               "complete" to true,
               "errorCode" to "",
-              "width" to gray.cols(),
-              "height" to gray.rows(),
+              "width" to dual.detect.cols(),
+              "height" to dual.detect.rows(),
               "markers" to markersToList(detection.markers),
               "flipMode" to bestFlip,
               "arucoScore" to detection.score,
@@ -517,10 +537,11 @@ class OmrOpencvModule : Module() {
             warped.release()
           }
         } finally {
-          gray.release()
+          if (ownsInkFlip) inkFlipped.release()
         }
       } finally {
-        base.release()
+        dual.detect.release()
+        dual.ink.release()
       }
     }
   }

@@ -62,6 +62,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
     "omr:oracle": "node tools/omr-oracle/test-pipeline.mjs",
+    "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/android-release.ps1",
     "postinstall": "patch-package"
   },
   "private": true,

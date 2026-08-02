@@ -13,7 +13,8 @@ export type CaptureGateResult =
  */
 export async function gateCaptureAruco(photoUri: string): Promise<CaptureGateResult> {
   if (isNativeArucoAvailable() && OmrOpencv?.detectArucoCorners) {
-    const flips = ['none', 'x', 'y', 'xy'] as const;
+    // Try upright first — avoid 4× full decode on the common path (was a major lag source).
+    const flips = ['none', 'xy', 'x', 'y'] as const;
     let bestIds: number[] = [];
     for (const flip of flips) {
       try {

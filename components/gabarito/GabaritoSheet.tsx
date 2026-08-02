@@ -72,25 +72,6 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
             const cy = bubble.center.yPct * height;
             return (
               <React.Fragment key={bubble.option}>
-                {/* Letter ABOVE the disk so ink sampling never hits the glyph (G03). */}
-                <RNText
-                  style={[
-                    styles.text,
-                    {
-                      position: 'absolute',
-                      left: cx,
-                      top: cy - bubbleDiameter * 0.62,
-                      width: bubbleDiameter,
-                      marginLeft: -bubbleDiameter / 2,
-                      textAlign: 'center',
-                      fontSize: optionLabelSize,
-                      fontWeight: '600',
-                      color: colors.printInk,
-                    },
-                  ]}
-                >
-                  {bubble.option}
-                </RNText>
                 <View
                   style={[
                     styles.bubble,
@@ -103,6 +84,35 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
                     },
                   ]}
                 />
+                {/* Letter centered inside the disk (clean printable template). */}
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    left: cx - bubbleDiameter / 2,
+                    top: cy - bubbleDiameter / 2,
+                    width: bubbleDiameter,
+                    height: bubbleDiameter,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <RNText
+                    style={[
+                      styles.text,
+                      {
+                        fontSize: optionLabelSize,
+                        fontWeight: '600',
+                        // Soft gray: readable on print, weaker than pen for OMR.
+                        color: colors.textMuted,
+                        // Android font metrics bias glyphs upward inside the disk.
+                        transform: [{ translateY: optionLabelSize * 0.12 }],
+                      },
+                    ]}
+                  >
+                    {bubble.option}
+                  </RNText>
+                </View>
               </React.Fragment>
             );
           })}
