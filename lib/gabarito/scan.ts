@@ -97,35 +97,107 @@ function darkestFractionGray(pixels: Uint8Array): number {
   return sum / count;
 }
 
-/** Centroid of every below-threshold pixel within `region`, or null if too few were found. */
-function centroidOfDarkPixels(
+/**
+ * Centroid of the *largest single connected blob* of below-threshold pixels within `region`
+ * (4-connectivity flood fill), rather than a plain average over every dark pixel in the region.
+ * The corner mark is a solid printed square — one big contiguous blob. A QR code sitting in the
+ * same search quadrant is *not*: its modules form a checkerboard of small, mostly disconnected
+ * islands (even its solid-looking finder squares are far smaller than our corner mark). A plain
+ * centroid over the whole region averages in every dark pixel regardless of which object it
+ * belongs to, so a QR with enough total dark pixels can drag the result toward itself even while
+ * sitting well away from the true corner — this is what a fixed-margin QR offset can never fully
+ * fix, since the QR still shares the same (large, half-the-photo) search quadrant either way.
+ * Picking the single largest connected component sidesteps that: whichever solid square is
+ * physically biggest wins, independent of how many *other*, smaller dark islands are nearby.
+ *
+ * Raw size alone isn't enough, though — a shadow, a dark background strip, or the edge of the
+ * photo itself can form one big connected blob too, just not a square one. So among all blobs,
+ * only ones that are roughly square (bounding-box aspect ratio) and reasonably solid-filled (not
+ * a sparse, scattered region that merely happens to be connected) are eligible; the largest of
+ * *those* wins. A blob that's big but shaped like a wide strip is rejected even if it has more
+ * pixels than the true corner mark.
+ */
+function largestDarkBlobCentroid(
   gl: ExpoWebGLRenderingContext,
   region: { x: number; y: number; width: number; height: number },
   minDarkPixels: number,
 ): { point: PixelPoint; count: number } | null {
+  const MAX_ASPECT_RATIO = 2.0;
+  const MIN_FILL_RATIO = 0.5;
+
   const regionX = Math.max(0, Math.round(region.x));
   const regionY = Math.max(0, Math.round(region.y));
   const regionWidth = Math.max(1, Math.round(region.width));
   const regionHeight = Math.max(1, Math.round(region.height));
 
   const pixels = readGrayPixels(gl, regionX, regionY, regionWidth, regionHeight);
+  const total = regionWidth * regionHeight;
+  const visited = new Uint8Array(total);
+  const stack: number[] = [];
 
-  let sumX = 0;
-  let sumY = 0;
-  let count = 0;
-  for (let row = 0; row < regionHeight; row++) {
-    const rowOffset = row * regionWidth;
-    for (let col = 0; col < regionWidth; col++) {
-      if (pixels[rowOffset + col] < CORNER_MARK_THRESHOLD) {
-        sumX += col;
-        sumY += row;
-        count++;
+  let bestCount = 0;
+  let bestSumX = 0;
+  let bestSumY = 0;
+
+  for (let start = 0; start < total; start++) {
+    if (visited[start] || pixels[start] >= CORNER_MARK_THRESHOLD) continue;
+
+    let count = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let minX = regionWidth;
+    let maxX = 0;
+    let minY = regionHeight;
+    let maxY = 0;
+    stack.length = 0;
+    stack.push(start);
+    visited[start] = 1;
+
+    while (stack.length > 0) {
+      const idx = stack.pop() as number;
+      const cx = idx % regionWidth;
+      const cy = (idx / regionWidth) | 0;
+      count++;
+      sumX += cx;
+      sumY += cy;
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cy < minY) minY = cy;
+      if (cy > maxY) maxY = cy;
+
+      if (cx > 0 && !visited[idx - 1] && pixels[idx - 1] < CORNER_MARK_THRESHOLD) {
+        visited[idx - 1] = 1;
+        stack.push(idx - 1);
       }
+      if (cx < regionWidth - 1 && !visited[idx + 1] && pixels[idx + 1] < CORNER_MARK_THRESHOLD) {
+        visited[idx + 1] = 1;
+        stack.push(idx + 1);
+      }
+      if (cy > 0 && !visited[idx - regionWidth] && pixels[idx - regionWidth] < CORNER_MARK_THRESHOLD) {
+        visited[idx - regionWidth] = 1;
+        stack.push(idx - regionWidth);
+      }
+      if (cy < regionHeight - 1 && !visited[idx + regionWidth] && pixels[idx + regionWidth] < CORNER_MARK_THRESHOLD) {
+        visited[idx + regionWidth] = 1;
+        stack.push(idx + regionWidth);
+      }
+    }
+
+    const boxWidth = maxX - minX + 1;
+    const boxHeight = maxY - minY + 1;
+    const aspectRatio = Math.max(boxWidth, boxHeight) / Math.max(1, Math.min(boxWidth, boxHeight));
+    const fillRatio = count / (boxWidth * boxHeight);
+    const isSquareish = aspectRatio <= MAX_ASPECT_RATIO && fillRatio >= MIN_FILL_RATIO;
+
+    if (isSquareish && count > bestCount) {
+      bestCount = count;
+      bestSumX = sumX;
+      bestSumY = sumY;
     }
   }
 
-  if (count < minDarkPixels) return null;
-  return { point: { x: regionX + sumX / count, y: regionY + sumY / count }, count };
+  if (bestCount < minDarkPixels) return null;
+  return { point: { x: regionX + bestSumX / bestCount, y: regionY + bestSumY / bestCount }, count: bestCount };
 }
 
 /**
@@ -143,7 +215,7 @@ function centroidOfDarkPixels(
  * mark even if the rough pass was somewhat off.
  */
 function findCornerMark(gl: ExpoWebGLRenderingContext, region: { x: number; y: number; width: number; height: number }): PixelPoint | null {
-  let current = centroidOfDarkPixels(gl, region, MIN_CORNER_DARK_PIXELS);
+  let current = largestDarkBlobCentroid(gl, region, MIN_CORNER_DARK_PIXELS);
   if (!current) return null;
 
   // Two refinement passes, each in a tighter window centered on the previous result — each pass
@@ -152,7 +224,7 @@ function findCornerMark(gl: ExpoWebGLRenderingContext, region: { x: number; y: n
   let windowSize = Math.max(region.width, region.height);
   for (let pass = 0; pass < 2; pass++) {
     windowSize *= 0.15;
-    const refined = centroidOfDarkPixels(
+    const refined = largestDarkBlobCentroid(
       gl,
       {
         x: current.point.x - windowSize / 2,

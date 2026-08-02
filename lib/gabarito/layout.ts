@@ -9,7 +9,11 @@ export function optionsForCount(optionsCount: 4 | 5): string[] {
 const SHEET_WIDTH_MM = 210;
 
 const CORNER_INSET_PCT = 0.035;
-const CORNER_MARK_SIZE_PCT = 0.03;
+// Bigger than strictly needed for a sharp scan — a bigger solid square survives print/photo blur
+// and JPEG compression better (its core stays solidly dark even if the edges soften), and gives
+// the connected-component corner detection in lib/gabarito/scan.ts a larger, more unambiguous
+// blob to lock onto.
+const CORNER_MARK_SIZE_PCT = 0.045;
 // All of the constants below are expressed as a fraction of the sheet's WIDTH (not height) —
 // the sheet's height is derived from actual content (header + however many rows fit), instead of
 // assuming a fixed A4 height and hoping the content matches it. This is what avoids both an
