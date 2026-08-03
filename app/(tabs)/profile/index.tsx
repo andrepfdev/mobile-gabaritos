@@ -62,8 +62,13 @@ export default function Profile() {
       return;
     }
     setError(null);
-    await updateMe.mutateAsync({ name: name.trim(), email: email.trim() });
-    setEditing(false);
+    try {
+      await updateMe.mutateAsync({ name: name.trim(), email: email.trim() });
+      setEditing(false);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError?.message ?? 'Não foi possível salvar seus dados. Tente novamente.');
+    }
   };
 
   const onStartChangingPassword = () => {
