@@ -31,7 +31,9 @@ export default function AnswerKeyScreen() {
     router.back();
   };
 
-  const allAnswered = Object.keys(answers).length === exam.questionCount;
+  const allAnswered = Array.from({ length: exam.questionCount }, (_, i) => i).every(
+    (index) => answers[index],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

@@ -1,6 +1,7 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
@@ -77,7 +78,16 @@ export default function ScanResult() {
           </Card>
         ) : null}
 
-        <StatCard variant="dark" value={`${scorePercent} pontos`} label="Nota (base 100)" fullWidth />
+        <View style={styles.scoreRow}>
+          <StatCard variant="dark" value={`Nota ${scorePercent}`} label="Referência (base 100)" />
+          <Pressable
+            style={styles.rescanButton}
+            onPress={onScanAgain}
+            accessibilityLabel="Escanear outra"
+          >
+            <Ionicons name="scan-outline" size={28} color={colors.dark} />
+          </Pressable>
+        </View>
 
         <ScrollView horizontal contentContainerStyle={styles.summaryRow}>
           <StatCard variant="light" value={String(correctCount)} label="Acertos" />
@@ -182,6 +192,20 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.sm,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.sm,
+  },
+  rescanButton: {
+    width: 56,
+    borderRadius: 28,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.dark,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryRow: {
     flexDirection: 'row',

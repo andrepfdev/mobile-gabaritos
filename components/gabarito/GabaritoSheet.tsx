@@ -10,7 +10,7 @@ import { ArucoMarker } from './ArucoMarker';
 export type GabaritoSheetProps = {
   exam: Exam;
   width?: number;
-  /** Question -> correct option letter. When set, that bubble renders pre-filled (calibration sheet). */
+  /** 0-indexed question -> correct option letter. When set, that bubble renders pre-filled (calibration sheet). */
   answerKey?: Record<number, string>;
 };
 
@@ -111,7 +111,7 @@ export function GabaritoSheet({ exam, width = 1000, answerKey }: GabaritoSheetPr
           {row.options.map((bubble) => {
             const cx = bubble.center.xPct * width;
             const cy = bubble.center.yPct * height;
-            const isMarked = answerKey?.[row.question] === bubble.option;
+            const isMarked = answerKey?.[row.question - 1] === bubble.option;
             return (
               <React.Fragment key={bubble.option}>
                 <View
