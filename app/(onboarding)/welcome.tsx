@@ -15,7 +15,7 @@ type Icon = { kind: 'gabarito' } | { kind: 'ionicon'; name: React.ComponentProps
 
 const SLIDES: { title: string; highlight?: string; subtitle: string; icon: Icon; bg: string }[] = [
   {
-    title: 'Esqueça as horas corrigindo provas!',
+    title: 'Nuca mais sofra corrigindo provas!',
     highlight: 'ProvaZero',
     subtitle: 'O ProvaZero ajuda você a criar, aplicar e corrigir avaliações em instantes. Mais tempo para o que realmente importa.',
     icon: { kind: 'gabarito' },
