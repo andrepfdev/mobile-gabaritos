@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Link, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { AuthFormLayout } from '../../components/auth/AuthFormLayout';
 import { AuthTextField } from '../../components/auth/AuthTextField';
 import { PillButton } from '../../components/ui/PillButton';
@@ -49,14 +49,7 @@ export default function Login() {
       ) : null}
       <PillButton title="Entrar" onPress={onSubmit} disabled={login.isPending} />
       <View style={styles.footer}>
-        <Text variant="body" color={colors.textMuted}>
-          Não tem conta?{' '}
-        </Text>
-        <Link href="/(auth)/register">
-          <Text variant="body" weight="medium">
-            Cadastre-se
-          </Text>
-        </Link>
+        <PillButton title="Cadastre-se" variant="outline" onPress={() => router.push('/(auth)/register')} />
       </View>
     </AuthFormLayout>
   );
@@ -67,8 +60,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
 });
