@@ -8,8 +8,9 @@ import { PillButton } from '../../../components/ui/PillButton';
 import { AuthTextField } from '../../../components/auth/AuthTextField';
 import { StatusTag } from '../../../components/ui/StatusTag';
 import { colors, spacing } from '../../../theme/tokens';
-import { useCurrentUser, useUpdateMe } from '../../../api/users';
+import { useChangePassword, useCurrentUser, useUpdateMe } from '../../../api/users';
 import { useAuthStore } from '../../../store/authStore';
+import { ApiError } from '../../../api/client';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pendente',
@@ -30,6 +31,14 @@ export default function Profile() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const changePassword = useChangePassword();
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   const onLogout = async () => {
     await logout();
@@ -55,6 +64,39 @@ export default function Profile() {
     setError(null);
     await updateMe.mutateAsync({ name: name.trim(), email: email.trim() });
     setEditing(false);
+  };
+
+  const onStartChangingPassword = () => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError(null);
+    setPasswordSuccess(false);
+    setChangingPassword(true);
+  };
+
+  const onSavePassword = async () => {
+    if (!currentPassword) {
+      setPasswordError('Informe sua senha atual.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('As senhas não coincidem.');
+      return;
+    }
+    setPasswordError(null);
+    try {
+      await changePassword.mutateAsync({ currentPassword, newPassword });
+      setChangingPassword(false);
+      setPasswordSuccess(true);
+    } catch (err) {
+      const apiError = err as ApiError;
+      setPasswordError(apiError?.message ?? 'Não foi possível alterar sua senha. Tente novamente.');
+    }
   };
 
   return (
@@ -94,6 +136,63 @@ export default function Profile() {
                 {user?.email}
               </Text>
               <PillButton title="Editar dados" variant="outline" onPress={onStartEditing} />
+            </View>
+          )}
+        </Card>
+
+        <Card variant="light" style={styles.card}>
+          {changingPassword ? (
+            <View>
+              <Text variant="h2" weight="bold" style={styles.passwordTitle}>
+                Alterar senha
+              </Text>
+              <AuthTextField
+                label="Senha atual"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                placeholder="Sua senha atual"
+                secureTextEntry
+              />
+              <AuthTextField
+                label="Nova senha"
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder="Nova senha"
+                secureTextEntry
+              />
+              <AuthTextField
+                label="Confirmar nova senha"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder="Repita a nova senha"
+                secureTextEntry
+                error={passwordError ?? undefined}
+              />
+              <View style={styles.editActions}>
+                <PillButton
+                  title="Salvar"
+                  variant="accent"
+                  onPress={onSavePassword}
+                  disabled={changePassword.isPending}
+                />
+                <PillButton title="Cancelar" variant="outline" onPress={() => setChangingPassword(false)} />
+              </View>
+            </View>
+          ) : (
+            <View>
+              <Text variant="h2" weight="bold">
+                Senha
+              </Text>
+              {passwordSuccess ? (
+                <Text variant="body" color={colors.success} style={styles.email}>
+                  Senha alterada com sucesso.
+                </Text>
+              ) : (
+                <Text variant="body" color={colors.textMuted} style={styles.email}>
+                  Altere a senha usada para acessar o aplicativo.
+                </Text>
+              )}
+              <PillButton title="Alterar senha" variant="outline" onPress={onStartChangingPassword} />
             </View>
           )}
         </Card>
@@ -148,6 +247,9 @@ const styles = StyleSheet.create({
   editActions: {
     flexDirection: 'row',
     gap: spacing.sm,
+  },
+  passwordTitle: {
+    marginBottom: spacing.sm,
   },
   subscriptionHeader: {
     flexDirection: 'row',
