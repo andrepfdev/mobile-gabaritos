@@ -29,15 +29,9 @@ export function AuthTextField({
           {label}
         </Text>
       ) : null}
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, focused && styles.inputRowFocused, error && styles.inputRowError]}>
         <TextInput
-          style={[
-            styles.input,
-            isPasswordField && styles.inputWithIcon,
-            focused && styles.inputFocused,
-            error && styles.inputError,
-            style,
-          ]}
+          style={[styles.input, isPasswordField && styles.inputWithIcon, style]}
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           onFocus={(e) => {
@@ -85,12 +79,20 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     justifyContent: 'center',
-  },
-  input: {
-    backgroundColor: colors.grayLight,
     borderRadius: radii.md,
     borderWidth: 1.5,
     borderColor: colors.progressTrack,
+    backgroundColor: colors.grayLight,
+    overflow: 'hidden',
+  },
+  inputRowFocused: {
+    borderColor: colors.yellow,
+  },
+  inputRowError: {
+    borderColor: colors.danger,
+  },
+  input: {
+    backgroundColor: 'transparent',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     fontSize: 15,
@@ -98,12 +100,6 @@ const styles = StyleSheet.create({
   },
   inputWithIcon: {
     paddingRight: spacing.xl,
-  },
-  inputFocused: {
-    borderColor: colors.coral,
-  },
-  inputError: {
-    borderColor: colors.danger,
   },
   icon: {
     position: 'absolute',
