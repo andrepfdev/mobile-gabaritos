@@ -21,7 +21,7 @@ export function GabaritoSheet({ exam, width = 1000, answerKey }: GabaritoSheetPr
   const labelFontSize = bubbleDiameter * 0.5;
   const headerH = layout.headerHeightPct * height;
   const optionLabelSize = Math.max(9, bubbleDiameter * 0.28);
-  const columnHeaderFontSize = bubbleDiameter * 0.5;
+  const columnHeaderFontSize = bubbleDiameter * 0.4;
 
   return (
     <View style={[styles.sheet, { width, height }]}>
@@ -55,25 +55,40 @@ export function GabaritoSheet({ exam, width = 1000, answerKey }: GabaritoSheetPr
       {/* Big column letters above the grid — print-only, well outside any bubble's sampled
           area, so making these bigger/bolder never affects OMR reading (unlike the small
           letter inside each bubble, which is deliberately kept faint — see below). */}
-      {layout.columnHeaders.map((label) => (
-        <RNText
-          key={`col-${label.column}-${label.option}`}
-          style={[
-            styles.label,
-            styles.text,
-            {
-              left: label.center.xPct * width,
-              top: label.center.yPct * height,
-              fontSize: columnHeaderFontSize,
-              fontWeight: '700',
-              color: colors.printInk,
-              transform: [{ translateX: -columnHeaderFontSize / 2 }, { translateY: -columnHeaderFontSize / 2 }],
-            },
-          ]}
-        >
-          {label.option}
-        </RNText>
-      ))}
+      {layout.columnHeaders.map((label) => {
+        const boxSize = columnHeaderFontSize * 1.4;
+        return (
+          <View
+            key={`col-${label.column}-${label.option}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: label.center.xPct * width - boxSize / 2,
+              top: label.center.yPct * height - boxSize / 2,
+              width: boxSize,
+              height: boxSize,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <RNText
+              style={[
+                styles.text,
+                {
+                  fontSize: columnHeaderFontSize,
+                  fontWeight: '700',
+                  color: colors.printInk,
+                  // Shrunk vs. the bubble diameter and nudged up within its box, so there's
+                  // clear air between the letter and the bubble row below it.
+                  transform: [{ translateY: -columnHeaderFontSize * 0.35 }],
+                },
+              ]}
+            >
+              {label.option}
+            </RNText>
+          </View>
+        );
+      })}
 
       {layout.rows.map((row) => (
         <React.Fragment key={row.question}>
