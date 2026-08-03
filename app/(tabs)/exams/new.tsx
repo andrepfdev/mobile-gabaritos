@@ -1,14 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Text } from '../../../components/ui/Text';
 import { AuthTextField } from '../../../components/auth/AuthTextField';
 import { PillButton } from '../../../components/ui/PillButton';
-import { colors, spacing } from '../../../theme/tokens';
+import { colors, radii, spacing } from '../../../theme/tokens';
 import { useExamStore } from '../../../store/examStore';
 import { useCanCreateExam } from '../../../hooks/useCanCreateExam';
 import { generateExamCode } from '../../../lib/gabarito/code';
+
+const MAX_QUESTIONS = 15;
+
+function parseIsoDate(iso: string): Date | undefined {
+  if (!iso) return undefined;
+  const parsed = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function toIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export default function NewExam() {
   const router = useRouter();
@@ -27,7 +43,10 @@ export default function NewExam() {
   const [className, setClassName] = useState('');
   const [questionCount, setQuestionCount] = useState('10');
   const [dueDate, setDueDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
+
+  const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
 
   const onSubmit = async () => {
     if (!title.trim() || !questionCount.trim()) return;
@@ -37,7 +56,7 @@ export default function NewExam() {
       title: title.trim(),
       subject: subject.trim() || undefined,
       className: className.trim() || undefined,
-      questionCount: Math.max(1, Number(questionCount) || 10),
+      questionCount: Math.min(MAX_QUESTIONS, Math.max(1, Number(questionCount) || 10)),
       dueDate: dueDate.trim() || undefined,
       createdAt: new Date().toISOString(),
       priority: 'none',
@@ -63,13 +82,29 @@ export default function NewExam() {
           value={questionCount}
           onChangeText={setQuestionCount}
           keyboardType="number-pad"
+          error={questionCountExceedsMax ? `Máximo de ${MAX_QUESTIONS} questões` : undefined}
         />
-        <AuthTextField
-          label="Prazo (AAAA-MM-DD)"
-          value={dueDate}
-          onChangeText={setDueDate}
-          placeholder="2026-08-15"
-        />
+        <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.dateLabel}>
+          Prazo
+        </Text>
+        <Pressable style={styles.dateInput} onPress={() => setShowDatePicker(true)}>
+          <Text variant="body" color={dueDate ? colors.textPrimary : colors.textMuted}>
+            {dueDate ? parseIsoDate(dueDate)?.toLocaleDateString('pt-BR') : 'Selecionar data de entrega'}
+          </Text>
+        </Pressable>
+        {showDatePicker ? (
+          <DateTimePicker
+            value={parseIsoDate(dueDate) ?? new Date()}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'inline' : 'default'}
+            onChange={(event, selectedDate) => {
+              setShowDatePicker(Platform.OS === 'ios');
+              if (event.type === 'set' && selectedDate) {
+                setDueDate(toIsoDate(selectedDate));
+              }
+            }}
+          />
+        ) : null}
         <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.optionsLabel}>
           Alternativas por questão
         </Text>
@@ -99,6 +134,18 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     paddingBottom: 140,
+  },
+  dateLabel: {
+    marginBottom: spacing.xs,
+  },
+  dateInput: {
+    backgroundColor: colors.grayLight,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.progressTrack,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    marginBottom: spacing.md,
   },
   title: {
     marginBottom: spacing.md,

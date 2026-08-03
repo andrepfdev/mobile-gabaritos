@@ -13,8 +13,9 @@ App mobile para correção de gabaritos escolares. A marcação de respostas e o
 ## Pré-requisitos
 
 - Node.js 20+ e npm
-- App **Expo Go** no celular (mais simples) — [Android](https://play.google.com/store/apps/details?id=host.exp.exponent) / [iOS](https://apps.apple.com/app/expo-go/id982107779)
-- Ou um emulador Android (Android Studio) / simulador iOS (Xcode, apenas macOS)
+- **Dev client / APK próprio** para leitura OMR com OpenCV (módulo nativo `modules/omr-opencv`). O **Expo Go não inclui** esse módulo — a correção por câmera no Android exige rebuild nativo (`npx expo run:android` ou `assembleRelease`).
+- Emulador Android (Android Studio) ou aparelho físico com o APK/dev-client instalado
+- Simulador iOS (Xcode, apenas macOS) — ArUco nativo ainda é stub/`unavailable` no iOS nesta fase
 
 ## Instalação
 
@@ -85,8 +86,73 @@ store/          authStore e examStore (zustand)
 lib/localDb/    schema, repositório AsyncStorage e grading.ts (correção pura)
 ```
 
+## Leitura OMR (Android + OpenCV)
+
+Inspirado no fluxo do **ENEM/INEP** (digitalização + reconhecimento óptico do cartão-resposta), adaptado ao celular:
+
+| ENEM (indústria) | ProvaZero (app) |
+|------------------|-----------------|
+| Scanner OMR com marcas de registro | ArUco DICT_4X4 nos 4 cantos da grade |
+| Ambiente controlado / digitalização | Gate 4/4 + captura JPEG único + fundo claro |
+| Caneta preta, círculo cheio | Preta ou azul; aceita preenchimento parcial (core + soft density) |
+| Densidade de tinta na bolha | ArUco em BT.601; bolhas em `min(R,G)` + core/fill + CLAHE leve |
+| Duas marcas → anula questão | Dupla marcação → em branco (nunca chute) |
+| TRI na nota | % simples de acertos (escopo escolar) |
+
+- Módulo `omr-opencv`: EXIF → CLAHE/`detectMarkers`/`CORNER_REFINE_SUBPIX` → flip por score → `warpPerspective` → CLAHE no canônico → bolhas.
+- Sem 4 marcas ArUco → rescan explícito. iOS ainda é stub.
+- Rebuild após mudar código nativo:
+
+```bash
+npx expo prebuild --platform android   # se necessário
+cd android && .\gradlew.bat assembleRelease
+```
+
+- Checklist de validação em dispositivo (≥20 fotos reais): [`tools/omr-oracle/DEVICE_CHECKLIST.md`](tools/omr-oracle/DEVICE_CHECKLIST.md)
+- Oracle sintético (JS, sem OpenCV nativo): `npm run omr:oracle`
+
+### Gerando um APK localmente (sem travar a máquina)
+
+O build nativo compila o OpenCV via CMake para 4 arquiteturas de CPU
+(`armeabi-v7a, arm64-v8a, x86, x86_64` — ver `reactNativeArchitectures` em
+`android/gradle.properties`). Rodar as 4 em paralelo com o paralelismo padrão
+do Gradle (1 worker por núcleo) pode consumir toda a RAM da máquina e travá-la.
+Para gerar um APK de teste para **celular físico** (a grande maioria usa
+`arm64-v8a`), restrinja a build a uma única arquitetura e limite os workers
+via linha de comando (sem alterar `gradle.properties`, que fica valendo para
+todo o time/CI):
+
+```bash
+# 1. Gera o projeto nativo Android (só precisa rodar de novo se mudar
+#    módulos nativos, plugins do app.json ou fizer `git clean`/reset do
+#    projeto)
+npx expo prebuild --platform android --no-install
+
+# 2. Compila o APK debug, restrito a arm64-v8a e com paralelismo limitado
+cd android
+export ANDROID_HOME=~/Android/Sdk   # ajuste para o caminho real do seu SDK
+nice -n 15 ./gradlew :app:assembleDebug \
+  -PreactNativeArchitectures=arm64-v8a \
+  --max-workers=4
+```
+
+O APK fica em `android/app/build/outputs/apk/debug/app-debug.apk`. Instale
+com `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` ou
+transferindo o arquivo para o aparelho.
+
+Notas:
+- Se a máquina travar mesmo assim, reduza `--max-workers` (ex.: `2`) ou rode
+  sem `-PreactNativeArchitectures` só quando realmente precisar de um APK
+  universal (todas as arquiteturas) — nesse caso reserve bastante RAM livre e
+  feche outros programas antes.
+- `./gradlew --stop` encerra o Gradle Daemon caso ele fique consumindo CPU/RAM
+  depois que o comando já terminou (ou foi interrompido no meio).
+- Para build de produção assinado, use `assembleRelease` (exige keystore
+  configurado) ou o EAS Build (`npx eas build --platform android`), que roda
+  na nuvem e não consome recursos da máquina local.
+
 ## Notas e limitações da v1
 
-- **Sem OCR/visão computacional**: a correção é feita por marcação manual (grid A–E). Leitura de imagem via OpenCV é uma evolução futura documentada, plugável sem alterar o restante do app (basta produzir um `StudentAnswer` por outro caminho).
+- Leitura OMR por câmera no Android depende do módulo OpenCV nativo; iOS ainda usa fallback JS / `unavailable`.
 - Fonte usada é **Inter** como substituta de **General Sans** (arquivos reais ainda não fornecidos); basta trocar `theme/fonts.ts` quando os arquivos oficiais estiverem disponíveis.
 - Sem dark mode nesta versão.

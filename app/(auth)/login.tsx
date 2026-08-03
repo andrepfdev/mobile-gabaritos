@@ -20,7 +20,7 @@ export default function Login() {
     setError(undefined);
     try {
       await login.mutateAsync({ email, password });
-      router.replace('/(tabs)/statistics');
+      router.replace('/(tabs)/exams');
     } catch (err) {
       setError((err as ApiError).message);
     }

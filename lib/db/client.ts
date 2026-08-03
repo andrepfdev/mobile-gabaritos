@@ -7,12 +7,10 @@ import * as schema from './schema';
 const sqlite = openDatabaseSync('provazero.db');
 export const db = drizzle(sqlite, { schema });
 
-let migratedPromise: Promise<void> | null = null;
+let migratedPromise: Promise<void> | undefined;
 
 /** Applies any pending Drizzle migrations, once per app run. */
 export function ensureMigrated(): Promise<void> {
-  if (!migratedPromise) {
-    migratedPromise = migrate(db, migrations);
-  }
+  migratedPromise ??= migrate(db, migrations);
   return migratedPromise;
 }

@@ -3,90 +3,92 @@ import { StyleSheet, Text as RNText, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { colors } from '../../theme/tokens';
 import { Exam } from '../../lib/localDb/schema';
-import { buildGabaritoLayout, GabaritoLayout, optionsForCount } from '../../lib/gabarito/layout';
+import { ARUCO_CORNER_IDS } from '../../lib/gabarito/arucoPatterns';
+import { buildGabaritoLayout, optionsForCount } from '../../lib/gabarito/layout';
+import { ArucoMarker } from './ArucoMarker';
 
 export type GabaritoSheetProps = {
   exam: Exam;
   width?: number;
+  /** Question -> correct option letter. When set, that bubble renders pre-filled (calibration sheet). */
+  answerKey?: Record<number, string>;
 };
 
-function CornerMark({ layout, width, height, corner }: { layout: GabaritoLayout; width: number; height: number; corner: keyof GabaritoLayout['corners'] }) {
-  const point = layout.corners[corner];
-  const size = layout.cornerMarkSizePct * width;
-  return (
-    <View
-      style={[
-        styles.cornerMark,
-        {
-          width: size,
-          height: size,
-          left: point.xPct * width - size / 2,
-          top: point.yPct * height - size / 2,
-        },
-      ]}
-    />
-  );
-}
-
-export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
+export function GabaritoSheet({ exam, width = 1000, answerKey }: GabaritoSheetProps) {
   const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
   const height = width / layout.aspectRatio;
   const bubbleDiameter = layout.bubbleRadiusPct * width * 2;
   const labelFontSize = bubbleDiameter * 0.5;
+  const headerH = layout.headerHeightPct * height;
+  const optionLabelSize = Math.max(9, bubbleDiameter * 0.28);
+  const columnHeaderFontSize = bubbleDiameter * 0.4;
 
   return (
     <View style={[styles.sheet, { width, height }]}>
-      {/* minHeight (not height) + top alignment: a long title can wrap to 2 lines and grow the
-          header without overlapping the divider/first row — the divider itself is a separate
-          absolutely-positioned line pinned at the reserved header height, not this View's border. */}
-      <View
-        style={[
-          styles.header,
-          { minHeight: layout.headerHeightPct * height, paddingHorizontal: width * 0.06 },
-        ]}
-      >
+      {/* Identity only — kept above the OMR frame so ArUco never overlaps title/QR. */}
+      <View style={[styles.header, { height: headerH, paddingHorizontal: width * 0.05 }]}>
         <View style={styles.headerText}>
-          {/* Plain system font (no custom Fredoka family) for every text element on the printed
-              sheet — the brand's playful rounded font isn't legible at small sizes (B/R and E/F
-              become ambiguous) and, in testing, also rendered with visible artifacts through
-              react-native-view-shot. A plain sans-serif is what real bubble sheets use anyway. */}
-          <RNText style={[styles.text, { fontSize: width * 0.026, fontWeight: '700', color: colors.textPrimary }]} numberOfLines={2}>
+          <RNText
+            style={[styles.text, { fontSize: width * 0.026, fontWeight: '700', color: colors.textPrimary }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {exam.title}
           </RNText>
-          <RNText style={[styles.text, { fontSize: width * 0.018, marginTop: 4, color: colors.textMuted }]}>
+          <RNText
+            style={[styles.text, { fontSize: width * 0.018, marginTop: 4, color: colors.textMuted }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {[exam.subject, exam.className].filter(Boolean).join(' · ') || ' '}
           </RNText>
           <RNText style={[styles.text, { fontSize: width * 0.02, marginTop: 6, fontWeight: '700', color: colors.coral }]}>
             {`Código: ${exam.code}`}
           </RNText>
         </View>
-        {/* A modest gap is enough — corner detection in lib/gabarito/scan.ts now picks the largest
-            *connected* blob of dark pixels in its search quadrant, not a raw centroid over every
-            dark pixel there. The QR's modules form small disconnected islands (even its finder
-            squares are much smaller than the solid corner mark), so it can no longer out-compete
-            the real mark regardless of exactly how close it sits. */}
-        <View style={{ marginRight: width * 0.08 }}>
-          <QRCode value={exam.id} size={width * 0.085} color={colors.dark} backgroundColor={colors.white} />
+        <View style={styles.qrWrap}>
+          <QRCode value={exam.id} size={width * 0.09} color={colors.printInk} backgroundColor={colors.white} />
         </View>
       </View>
-      <View style={[styles.headerDivider, { top: layout.headerHeightPct * height, width }]} />
+      <View style={[styles.headerDivider, { top: headerH, width }]} />
 
-      {layout.rows.map((row) =>
-        row.question % 2 === 0 ? (
+      {/* Big column letters above the grid — print-only, well outside any bubble's sampled
+          area, so making these bigger/bolder never affects OMR reading (unlike the small
+          letter inside each bubble, which is deliberately kept faint — see below). */}
+      {layout.columnHeaders.map((label) => {
+        const boxSize = columnHeaderFontSize * 1.4;
+        return (
           <View
-            key={`band-${row.question}`}
-            style={[
-              styles.band,
-              {
-                left: row.band.xPct * width,
-                top: row.band.yPct * height,
-                width: row.band.widthPct * width,
-                height: row.band.heightPct * height,
-              },
-            ]}
-          />
-        ) : null,
-      )}
+            key={`col-${label.column}-${label.option}`}
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: label.center.xPct * width - boxSize / 2,
+              top: label.center.yPct * height - boxSize / 2,
+              width: boxSize,
+              height: boxSize,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <RNText
+              style={[
+                styles.text,
+                {
+                  fontSize: columnHeaderFontSize,
+                  fontWeight: '700',
+                  color: colors.printInk,
+                  // Shrunk vs. the bubble diameter and nudged up within its box, so there's
+                  // clear air between the letter and the bubble row below it.
+                  transform: [{ translateY: -columnHeaderFontSize * 0.35 }],
+                },
+              ]}
+            >
+              {label.option}
+            </RNText>
+          </View>
+        );
+      })}
 
       {layout.rows.map((row) => (
         <React.Fragment key={row.question}>
@@ -99,42 +101,82 @@ export function GabaritoSheet({ exam, width = 1000 }: GabaritoSheetProps) {
                 top: row.labelCenter.yPct * height,
                 fontSize: labelFontSize,
                 fontWeight: '600',
-                color: colors.textPrimary,
+                color: colors.printInk,
                 transform: [{ translateX: -labelFontSize / 2 }, { translateY: -labelFontSize / 2 }],
               },
             ]}
           >
             {`${row.question}`}
           </RNText>
-          {row.options.map((bubble) => (
-            <View
-              key={bubble.option}
-              style={[
-                styles.bubble,
-                {
-                  width: bubbleDiameter,
-                  height: bubbleDiameter,
-                  borderRadius: bubbleDiameter / 2,
-                  left: bubble.center.xPct * width - bubbleDiameter / 2,
-                  top: bubble.center.yPct * height - bubbleDiameter / 2,
-                },
-              ]}
-            >
-              <RNText style={[styles.text, { fontSize: bubbleDiameter * 0.42, fontWeight: '600', color: colors.textMuted }]}>
-                {bubble.option}
-              </RNText>
-            </View>
-          ))}
+          {row.options.map((bubble) => {
+            const cx = bubble.center.xPct * width;
+            const cy = bubble.center.yPct * height;
+            const isMarked = answerKey?.[row.question] === bubble.option;
+            return (
+              <React.Fragment key={bubble.option}>
+                <View
+                  style={[
+                    styles.bubble,
+                    isMarked && styles.bubbleMarked,
+                    {
+                      width: bubbleDiameter,
+                      height: bubbleDiameter,
+                      borderRadius: bubbleDiameter / 2,
+                      left: cx - bubbleDiameter / 2,
+                      top: cy - bubbleDiameter / 2,
+                    },
+                  ]}
+                />
+                {/* Letter centered inside the disk (clean printable template). */}
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: 'absolute',
+                    left: cx - bubbleDiameter / 2,
+                    top: cy - bubbleDiameter / 2,
+                    width: bubbleDiameter,
+                    height: bubbleDiameter,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <RNText
+                    style={[
+                      styles.text,
+                      {
+                        fontSize: optionLabelSize,
+                        fontWeight: '600',
+                        // Soft gray: readable on print, weaker than pen for OMR. White when
+                        // pre-filled (calibration sheet) so the letter stays legible on ink.
+                        color: isMarked ? colors.white : colors.textMuted,
+                        // Android font metrics bias glyphs upward inside the disk.
+                        transform: [{ translateY: optionLabelSize * 0.12 }],
+                      },
+                    ]}
+                  >
+                    {bubble.option}
+                  </RNText>
+                </View>
+              </React.Fragment>
+            );
+          })}
         </React.Fragment>
       ))}
 
-      {/* Rendered last (on top of the row stripes) — the bottom corner marks sit close enough to
-          the last row that an even-numbered final row's stripe could otherwise paint over part of
-          them, leaving a clipped-looking mark that throws off corner detection when scanning. */}
-      <CornerMark layout={layout} width={width} height={height} corner="topLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="topRight" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomLeft" />
-      <CornerMark layout={layout} width={width} height={height} corner="bottomRight" />
+      {/* ArUco frames the OMR block only (below header). */}
+      {(['topLeft', 'topRight', 'bottomRight', 'bottomLeft'] as const).map((corner) => {
+        const point = layout.corners[corner];
+        const size = layout.cornerMarkSizePct * width;
+        return (
+          <ArucoMarker
+            key={corner}
+            id={ARUCO_CORNER_IDS[corner]}
+            size={size}
+            left={point.xPct * width - size / 2}
+            top={point.yPct * height - size / 2}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -146,28 +188,23 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 4,
+    overflow: 'hidden',
   },
   headerText: {
-    flexShrink: 1,
+    flex: 1,
     paddingRight: 12,
+    justifyContent: 'center',
+  },
+  qrWrap: {
+    flexShrink: 0,
   },
   headerDivider: {
     position: 'absolute',
     left: 0,
     height: 2,
-    backgroundColor: colors.dark,
-  },
-  cornerMark: {
-    position: 'absolute',
-    backgroundColor: colors.dark,
-  },
-  band: {
-    position: 'absolute',
-    backgroundColor: colors.grayLight,
-    borderRadius: 6,
+    backgroundColor: colors.printInk,
   },
   label: {
     position: 'absolute',
@@ -177,9 +214,11 @@ const styles = StyleSheet.create({
   },
   bubble: {
     position: 'absolute',
-    borderWidth: 1.5,
-    borderColor: colors.dark,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderWidth: 2.5,
+    borderColor: colors.printInk,
+    backgroundColor: colors.white,
+  },
+  bubbleMarked: {
+    backgroundColor: colors.printInk,
   },
 });

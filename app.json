@@ -10,13 +10,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.andrepfdev.provazero",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#07B35D",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -39,7 +40,15 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-camera",
         {
@@ -56,7 +65,10 @@
           ]
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-status-bar",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "apiBaseUrl": "https://api-gabaritos.vercel.app",

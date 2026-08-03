@@ -11,6 +11,7 @@ import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
+import { CALIBRATION_EXAM_ID } from '../../../../lib/mockData';
 
 // Rendered well above screen resolution so the exported image stays sharp when printed at full
 // size — the preview below shows it scaled down to fit the screen, but capture() always grabs
@@ -20,8 +21,11 @@ const CAPTURE_WIDTH = 1600;
 export default function ExportGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const exams = useExamStore((s) => s.exams);
+  const answerKeys = useExamStore((s) => s.answerKeys);
   const exam = exams.find((e) => e.id === examId);
-  const viewShotRef = useRef<ViewShot>(null);
+  const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const answerKey = isCalibration ? answerKeys.find((k) => k.examId === examId)?.answers : undefined;
+  const viewShotRef = useRef<React.ElementRef<typeof ViewShot>>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const { width: screenWidth } = useWindowDimensions();
 
@@ -58,7 +62,7 @@ export default function ExportGabarito() {
       }
       const uri = await capture();
       if (!uri) return;
-      await MediaLibrary.saveToLibraryAsync(uri);
+      await MediaLibrary.Asset.create(uri);
       Alert.alert('Salvo', 'A imagem do gabarito foi salva na sua galeria.');
     } finally {
       setBusy(null);
@@ -85,10 +89,12 @@ export default function ExportGabarito() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="h1" weight="bold" style={styles.title}>
-          Exportar gabarito
+          {isCalibration ? 'Gabarito de calibração' : 'Exportar gabarito'}
         </Text>
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
-          Baixe a imagem para imprimir ou compartilhe para inserir em um documento de texto.
+          {isCalibration
+            ? 'Esta folha já vem marcada. Imprima e escaneie de volta para testar a câmera do seu celular antes de aplicar provas reais.'
+            : 'Baixe a imagem para imprimir ou compartilhe para inserir em um documento de texto.'}
         </Text>
         <Text variant="caption" color={colors.textMuted} style={styles.hint}>
           Ao imprimir ou inserir no documento, use a opção &quot;Ajustar à página&quot; para o
@@ -105,7 +111,7 @@ export default function ExportGabarito() {
             }}
           >
             <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
-              <GabaritoSheet exam={exam} width={CAPTURE_WIDTH} />
+              <GabaritoSheet exam={exam} width={CAPTURE_WIDTH} answerKey={answerKey} />
             </ViewShot>
           </View>
         </View>
@@ -140,6 +146,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: spacing.lg,
     overflow: 'hidden',
-    borderRadius: 12,
+    borderRadius: 16,
   },
 });

@@ -21,7 +21,7 @@ export default function Register() {
     setError(undefined);
     try {
       await register.mutateAsync({ name, email, password });
-      router.replace('/(tabs)/statistics');
+      router.replace('/(tabs)/exams');
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.issues?.[0]?.message ?? apiError.message);

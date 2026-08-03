@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,18 +10,8 @@ import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
-import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
-import {
-  AMBIGUOUS_RATIO_THRESHOLD,
-  analyzeGabarito,
-  GabaritoScanError,
-  ScanAnswers,
-  ScanDebugInfo,
-  scoreAgainstAnswerKey,
-  unansweredRatio,
-} from '../../../../lib/gabarito/scan';
-
-type PixelPoint = { x: number; y: number };
+import { optionsForCount } from '../../../../lib/gabarito/layout';
+import { AMBIGUOUS_RATIO_THRESHOLD, scoreAgainstAnswerKey, unansweredRatio } from '../../../../lib/gabarito/scan';
 
 function LegendItem({ color, borderColor, label }: { color: string; borderColor?: string; label: string }) {
   return (
@@ -39,50 +29,17 @@ export default function ScanResult() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
-  const photoUri = useScanStore((s) => s.photoUri);
+  const result = useScanStore((s) => s.result);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
 
-  const [status, setStatus] = useState<'loading' | 'done' | 'error'>('loading');
-  const [answers, setAnswers] = useState<ScanAnswers>({});
-  const [debug, setDebug] = useState<ScanDebugInfo | null>(null);
-  const [errorDebug, setErrorDebug] = useState<{
-    imageWidth?: number;
-    imageHeight?: number;
-    corners?: Partial<{ topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }>;
-    message: string;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!exam || !answerKey || !photoUri) return;
-    let cancelled = false;
-    setStatus('loading');
-    setErrorDebug(null);
-    const layout = buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount));
-    analyzeGabarito(photoUri, layout)
-      .then((result) => {
-        if (cancelled) return;
-        setAnswers(result.answers);
-        setDebug(result.debug);
-        setStatus('done');
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        if (error instanceof GabaritoScanError) {
-          setErrorDebug({ imageWidth: error.imageWidth, imageHeight: error.imageHeight, corners: error.corners, message: error.message });
-        }
-        setStatus('error');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [exam, answerKey, photoUri]);
-
   const onScanAgain = () => router.replace(`/exams/${examId}/scan`);
   const onFinish = () => router.replace(`/exams/${examId}`);
 
-  if (!exam || !answerKey || !photoUri) {
+  // The full analysis already runs during capture (scan.tsx), so by the time this screen
+  // mounts the result is ready — no loading state, no re-analysis here.
+  if (!exam || !answerKey || !result) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Text variant="body" style={styles.content}>
@@ -92,67 +49,13 @@ export default function ScanResult() {
     );
   }
 
-  if (status === 'loading') {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScrollView contentContainerStyle={[styles.content, styles.centered]}>
-          <Text variant="body">Analisando gabarito...</Text>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <SafeAreaView style={styles.container} edges={['top']}>
-        <ScrollView contentContainerStyle={[styles.content, styles.centered]}>
-          <Text variant="h2" weight="bold" style={styles.errorTitle}>
-            Não foi possível ler o gabarito
-          </Text>
-          <Text variant="body" color={colors.textMuted} style={styles.errorSubtitle}>
-            Alinhe a folha às marcas e tente novamente.
-          </Text>
-          <PillButton title="Tentar novamente" variant="accent" onPress={onScanAgain} />
-
-          {/* TEMPORARY diagnostic block — same reasoning as the one below for a successful scan,
-              but for the failure path: without this we'd have zero visibility into *why* corner
-              detection failed or looked implausible on a given photo. */}
-          {errorDebug ? (
-            <Card variant="grayLight" style={styles.debugCard}>
-              <Text variant="body" weight="bold">
-                Diagnóstico (temporário)
-              </Text>
-              <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {errorDebug.message}
-              </Text>
-              {errorDebug.imageWidth ? (
-                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                  {`Foto: ${errorDebug.imageWidth}x${errorDebug.imageHeight}px`}
-                </Text>
-              ) : null}
-              {errorDebug.corners ? (
-                <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                  {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)
-                    .map((key) => {
-                      const point = errorDebug.corners?.[key];
-                      return `${key}: ${point ? `(${Math.round(point.x)},${Math.round(point.y)})` : 'não encontrado'}`;
-                    })
-                    .join(' ')}
-                </Text>
-              ) : null}
-            </Card>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
-  const { correctCount, wrongCount, scorePercent } = scoreAgainstAnswerKey(
+  const { answers, debug, timings } = result;
+  const { correctCount, wrongCount, blankCount, scorePercent } = scoreAgainstAnswerKey(
     answers,
     answerKey.answers,
     exam.questionCount,
   );
-  const isAmbiguous = unansweredRatio(answers, exam.questionCount) > AMBIGUOUS_RATIO_THRESHOLD;
+  const isAmbiguous = unansweredRatio(answers, exam.questionCount) >= AMBIGUOUS_RATIO_THRESHOLD;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -164,8 +67,13 @@ export default function ScanResult() {
         {isAmbiguous ? (
           <Card variant="pink" style={styles.card}>
             <Text variant="body" weight="medium">
-              Não conseguimos ler várias respostas. Alinhe a folha às marcas e tente novamente.
+              Não conseguimos ler ~10% das respostas com clareza (sem marcação ou marcação dupla).
+              Escaneie novamente com boa iluminação e a folha bem alinhada ao guia — não edite a
+              nota manualmente.
             </Text>
+            <View style={{ marginTop: spacing.sm }}>
+              <PillButton title="Escanear novamente" variant="accent" onPress={onScanAgain} />
+            </View>
           </Card>
         ) : null}
 
@@ -174,6 +82,7 @@ export default function ScanResult() {
         <ScrollView horizontal contentContainerStyle={styles.summaryRow}>
           <StatCard variant="light" value={String(correctCount)} label="Acertos" />
           <StatCard variant="grayLight" value={String(wrongCount)} label="Erros" />
+          <StatCard variant="grayLight" value={String(blankCount)} label="Em branco" />
         </ScrollView>
 
         <Text variant="h2" weight="bold" style={styles.sectionTitle}>
@@ -205,16 +114,28 @@ export default function ScanResult() {
               Diagnóstico (temporário)
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
-              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · janela de amostra: ${debug.sampleSize}px`}
+              {`Tempos: captura=${timings.captureMs}ms redimensionar=${timings.resizeMs}ms leitura=${timings.analyzeMs}ms total=${timings.totalMs}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`leitura = nativo=${debug.nativeMs ?? '?'}ms + bolhas=${debug.bubblesMs ?? '?'}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`nativo = decode=${debug.decodeMs?.toFixed(0) ?? '?'}ms detect=${debug.detectMs?.toFixed(0) ?? '?'}ms warp=${debug.warpMs?.toFixed(0) ?? '?'}ms clahe=${debug.claheMs?.toFixed(0) ?? '?'}ms`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`Foto: ${debug.imageWidth}x${debug.imageHeight}px · canônico: ${debug.canonicalWidth}x${debug.canonicalHeight}px · flip=${debug.flipMode} · motor=${debug.motor}`}
+            </Text>
+            <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
+              {`ArUco IDs: [${(debug.arucoIds ?? []).join(', ')}] · score=${Number(debug.arucoScore ?? 0).toFixed(2)}`}
             </Text>
             <Text variant="caption" color={colors.textMuted} style={styles.debugLine}>
               {`Cantos: TL(${Math.round(debug.corners.topLeft.x)},${Math.round(debug.corners.topLeft.y)}) TR(${Math.round(debug.corners.topRight.x)},${Math.round(debug.corners.topRight.y)}) BL(${Math.round(debug.corners.bottomLeft.x)},${Math.round(debug.corners.bottomLeft.y)}) BR(${Math.round(debug.corners.bottomRight.x)},${Math.round(debug.corners.bottomRight.y)})`}
             </Text>
             {debug.rows.map((row) => (
               <Text key={row.question} variant="caption" color={colors.textMuted} style={styles.debugLine}>
-                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.value}@(${r.x},${r.y})`).join(' ')} → ${
-                  row.isMarked ? `marcado ${row.darkestOption}` : 'sem marca'
-                } (min=${row.darkestValue} 2º=${row.secondDarkestValue} max=${row.lightestValue})`}
+                {`Q${row.question}: ${row.readings.map((r) => `${r.option}=${r.fill.toFixed(2)}`).join(' ')} → ${
+                  row.isMarked ? `marcado ${row.chosen}` : 'sem marca'
+                } (margem=${row.margin} z=${row.zScore})`}
               </Text>
             ))}
           </Card>
@@ -256,11 +177,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     fontFamily: 'monospace',
   },
-  centered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   title: {
     marginBottom: spacing.sm,
   },
@@ -275,13 +191,5 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
-  },
-  errorTitle: {
-    marginBottom: spacing.xs,
-    textAlign: 'center',
-  },
-  errorSubtitle: {
-    marginBottom: spacing.md,
-    textAlign: 'center',
   },
 });

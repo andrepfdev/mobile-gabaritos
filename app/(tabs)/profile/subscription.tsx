@@ -1,5 +1,5 @@
 import React from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../../components/ui/Text';
 import { Card } from '../../../components/ui/Card';
@@ -32,7 +32,14 @@ export default function SubscriptionScreen() {
   const cancelSubscription = useCancelSubscription();
 
   const onCancel = async () => {
-    await cancelSubscription.mutateAsync();
+    try {
+      await cancelSubscription.mutateAsync();
+    } catch {
+      Alert.alert(
+        'Não foi possível cancelar',
+        'Não conseguimos cancelar sua assinatura agora. Tente novamente mais tarde ou entre em contato com o suporte.'
+      );
+    }
   };
 
   return (
