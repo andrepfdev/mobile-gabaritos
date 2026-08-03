@@ -24,7 +24,7 @@ export default function SubscriptionLocked() {
     try {
       const { data } = await refetch();
       if (data?.activeSubscription?.status === 'AUTHORIZED') {
-        router.replace('/(tabs)/statistics');
+        router.replace('/(tabs)/exams');
       }
     } finally {
       setVerifying(false);

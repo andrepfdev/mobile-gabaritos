@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, TextInput, TextInputProps, View } from 'react-native';
 import { colors, radii, spacing } from '../../theme/tokens';
 import { Text } from '../ui/Text';
@@ -8,7 +8,9 @@ export type AuthTextFieldProps = TextInputProps & {
   error?: string;
 };
 
-export function AuthTextField({ label, error, style, ...rest }: AuthTextFieldProps) {
+export function AuthTextField({ label, error, style, onFocus, onBlur, ...rest }: AuthTextFieldProps) {
+  const [focused, setFocused] = useState(false);
+
   return (
     <View style={styles.wrap}>
       {label ? (
@@ -17,9 +19,17 @@ export function AuthTextField({ label, error, style, ...rest }: AuthTextFieldPro
         </Text>
       ) : null}
       <TextInput
-        style={[styles.input, style]}
+        style={[styles.input, focused && styles.inputFocused, error && styles.inputError, style]}
         placeholderTextColor={colors.textMuted}
         autoCapitalize="none"
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
         {...rest}
       />
       {error ? (
@@ -41,10 +51,18 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: colors.grayLight,
     borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: colors.progressTrack,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     fontSize: 15,
     color: colors.textPrimary,
+  },
+  inputFocused: {
+    borderColor: colors.coral,
+  },
+  inputError: {
+    borderColor: colors.danger,
   },
   error: {
     marginTop: spacing.xs,
