@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, Rect, Text as SvgText } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../theme/tokens';
 import { Text } from '../../components/ui/Text';
@@ -11,46 +11,103 @@ import { useAuthStore } from '../../store/authStore';
 
 const { width } = Dimensions.get('window');
 
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
+type Icon = { kind: 'gabarito' } | { kind: 'ionicon'; name: React.ComponentProps<typeof Ionicons>['name'] };
 
-const SLIDES: { title: string; subtitle: string; icon: IconName; bg: string }[] = [
+const SLIDES: { title: string; highlight?: string; subtitle: string; icon: Icon; bg: string }[] = [
   {
-    title: 'Bem-vindo ao ProvaZero!',
-    subtitle: 'Organize suas provas e acompanhe o desempenho das correções em um só app.',
-    icon: 'document-text-outline',
+    title: 'Esqueça as horas corrigindo provas!',
+    highlight: 'ProvaZero',
+    subtitle: 'O ProvaZero ajuda você a criar, aplicar e corrigir avaliações em instantes. Mais tempo para o que realmente importa.',
+    icon: { kind: 'gabarito' },
     bg: colors.coralSoft,
   },
   {
-    title: 'Corrija provas em minutos',
-    subtitle: 'A correção automática de provas permite que você economize tempo e tenha resultados precisos.',
-    icon: 'checkmark-done-outline',
+    title: 'Sinta a facilidade no seu dia a dia',
+    subtitle: 'Crie gabaritos e avaliações em poucos cliques. Simplifique sua rotina pedagógica com o ProvaZero.',
+    icon: { kind: 'ionicon', name: 'checkmark-done-outline' },
     bg: colors.yellowSoft,
   },
-  // {
-  //   title: 'Estatísticas por aluno e turma',
-  //   subtitle: 'Acompanhe taxa de acerto, tempo de correção e evolução de cada turma.',
-  //   icon: 'stats-chart-outline',
-  //   bg: colors.coralSoft,
-  // },
-  // {
-  //   title: 'Histórico completo de provas',
-  //   subtitle: 'Todas as suas provas corrigidas ficam salvas e organizadas no dispositivo.',
-  //   icon: 'time-outline',
-  //   bg: colors.yellowSoft,
-  // },
 ];
 
-function SlideIllustration({ icon, bg }: { icon: IconName; bg: string }) {
-  const size = 220;
+function SlideTitle({ title, highlight }: { title: string; highlight?: string }) {
+  const index = highlight ? title.indexOf(highlight) : -1;
+  if (!highlight || index === -1) {
+    return (
+      <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
+        {title}
+      </Text>
+    );
+  }
+
+  const before = title.slice(0, index);
+  const after = title.slice(index + highlight.length);
+
   return (
-    <View style={styles.illustrationWrap}>
-      <Svg width={size} height={size} viewBox="0 0 220 220">
-        <Circle cx={110} cy={110} r={110} fill={bg} />
-        <Circle cx={110} cy={110} r={78} fill={colors.white} />
-      </Svg>
-      <View style={styles.illustrationIcon}>
-        <Ionicons name={icon} size={64} color={colors.coral} />
-      </View>
+    <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
+      {before}
+      <Text variant="h1" weight="bold" color={colors.coral}>
+        {highlight}
+      </Text>
+      {after}
+    </Text>
+  );
+}
+
+/** Line-art answer sheet: numbered rows, lettered bubbles (A–E), one filled per row. */
+function GabaritoIcon({ color, size = 132 }: { color: string; size?: number }) {
+  const letters = ['A', 'B', 'C', 'D', 'E'];
+  const rowY = [42, 76, 110, 144, 178];
+  const filledIndex = [1, 3, 2, 0, 4];
+  const colX = [61, 88, 115, 142, 169];
+  const bubbleR = 11;
+
+  return (
+    <Svg width={size} height={size * 1.1} viewBox="0 0 200 220">
+      <Rect x="12" y="12" width="176" height="196" rx="20" stroke={color} strokeWidth={5} fill="#ffffff" />
+      {rowY.map((y, row) => (
+        <React.Fragment key={y}>
+          <SvgText x={30} y={y + 7} fontSize={20} fontWeight="700" fill={color} textAnchor="middle">
+            {row + 1}
+          </SvgText>
+          {colX.map((x, col) => {
+            const filled = col === filledIndex[row];
+            return (
+              <React.Fragment key={x}>
+                <Circle
+                  cx={x}
+                  cy={y}
+                  r={bubbleR}
+                  stroke={color}
+                  strokeWidth={2.5}
+                  fill={filled ? color : '#ffffff'}
+                />
+                <SvgText
+                  x={x}
+                  y={y + 4}
+                  fontSize={12}
+                  fontWeight="700"
+                  fill={filled ? '#ffffff' : color}
+                  textAnchor="middle"
+                >
+                  {letters[col]}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
+        </React.Fragment>
+      ))}
+    </Svg>
+  );
+}
+
+function SlideIllustration({ icon, bg }: { icon: Icon; bg: string }) {
+  return (
+    <View style={[styles.panel, { backgroundColor: bg }]}>
+      {icon.kind === 'gabarito' ? (
+        <GabaritoIcon color={colors.coral} />
+      ) : (
+        <Ionicons name={icon.name} size={108} color={colors.coral} />
+      )}
     </View>
   );
 }
@@ -88,14 +145,14 @@ export default function Welcome() {
         style={styles.scroll}
       >
         {SLIDES.map((slide) => (
-          <View key={slide.title} style={[styles.slide, { width }]}>
+          <View key={slide.title} style={{ width }}>
             <SlideIllustration icon={slide.icon} bg={slide.bg} />
-            <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
-              {slide.title}
-            </Text>
-            <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
-              {slide.subtitle}
-            </Text>
+            <View style={styles.textArea}>
+              <SlideTitle title={slide.title} highlight={slide.highlight} />
+              <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
+                {slide.subtitle}
+              </Text>
+            </View>
           </View>
         ))}
       </ScrollView>
@@ -120,19 +177,15 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
-  slide: {
-    flex: 1,
+  panel: {
+    height: '55%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textArea: {
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  illustrationWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl,
-  },
-  illustrationIcon: {
-    position: 'absolute',
   },
   title: {
     textAlign: 'center',
