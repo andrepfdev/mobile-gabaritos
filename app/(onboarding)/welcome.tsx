@@ -22,22 +22,22 @@ const SLIDES: { title: string; subtitle: string; icon: IconName; bg: string }[] 
   },
   {
     title: 'Corrija provas em minutos',
-    subtitle: 'Marque as respostas dos alunos e compare com o gabarito oficial na hora, direto do celular.',
+    subtitle: 'A correção automática de provas permite que você economize tempo e tenha resultados precisos.',
     icon: 'checkmark-done-outline',
     bg: colors.yellowSoft,
   },
-  {
-    title: 'Estatísticas por aluno e turma',
-    subtitle: 'Acompanhe taxa de acerto, tempo de correção e evolução de cada turma.',
-    icon: 'stats-chart-outline',
-    bg: colors.coralSoft,
-  },
-  {
-    title: 'Histórico completo de provas',
-    subtitle: 'Todas as suas provas corrigidas ficam salvas e organizadas no dispositivo.',
-    icon: 'time-outline',
-    bg: colors.yellowSoft,
-  },
+  // {
+  //   title: 'Estatísticas por aluno e turma',
+  //   subtitle: 'Acompanhe taxa de acerto, tempo de correção e evolução de cada turma.',
+  //   icon: 'stats-chart-outline',
+  //   bg: colors.coralSoft,
+  // },
+  // {
+  //   title: 'Histórico completo de provas',
+  //   subtitle: 'Todas as suas provas corrigidas ficam salvas e organizadas no dispositivo.',
+  //   icon: 'time-outline',
+  //   bg: colors.yellowSoft,
+  // },
 ];
 
 function SlideIllustration({ icon, bg }: { icon: IconName; bg: string }) {
