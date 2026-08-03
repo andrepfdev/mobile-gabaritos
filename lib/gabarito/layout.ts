@@ -27,6 +27,9 @@ const BUBBLE_PITCH_FACTOR = 2.2;
 const BUBBLE_HEIGHT_RATIO = 0.85;
 const ROW_LEFT_PADDING_RATIO = 0.02;
 const MAX_ROWS_PER_COLUMN = 25;
+/** Band reserved above the grid for the big printed column letters (A B C D E) — print-only,
+ * never sampled by the OMR reader (which only ever looks at `corners` and `bubbles`). */
+const COLUMN_LABEL_HEIGHT_W = 0.032;
 
 export type Point = { xPct: number; yPct: number };
 
@@ -42,6 +45,13 @@ export type QuestionRow = {
   options: BubblePosition[];
   /** Full-width band behind the row (column bounds x row height), for the alternating stripe background. */
   band: { xPct: number; yPct: number; widthPct: number; heightPct: number };
+};
+
+/** Big printed column letter (A/B/C/D/E) above each column — print-only, not used for reading. */
+export type ColumnHeaderLabel = {
+  column: number;
+  option: string;
+  center: Point;
 };
 
 export type GabaritoLayout = {
@@ -63,6 +73,9 @@ export type GabaritoLayout = {
   bubbleRadiusPct: number;
   rows: QuestionRow[];
   bubbles: BubblePosition[];
+  /** Vertical center (as a fraction of sheet height) of the printed column-letter band. */
+  columnHeaderYPct: number;
+  columnHeaders: ColumnHeaderLabel[];
 };
 
 /**
@@ -89,7 +102,9 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
 
   // Top ArUco centers sit fully below the header so title/QR never overlap the marks.
   const topCornerW = HEADER_HEIGHT_W + HEADER_OMR_GAP_W + markHalfW;
-  const gridTopW = topCornerW + markHalfW + GRID_TOP_GAP_W;
+  const columnHeaderTopW = topCornerW + markHalfW + GRID_TOP_GAP_W;
+  const columnHeaderCenterW = columnHeaderTopW + COLUMN_LABEL_HEIGHT_W / 2;
+  const gridTopW = columnHeaderTopW + COLUMN_LABEL_HEIGHT_W;
   const gridHeightW = rowsPerColumn * ROW_HEIGHT_W;
   const bottomCornerW = gridTopW + gridHeightW + GRID_TOP_GAP_W + markHalfW;
   const totalHeightW = bottomCornerW + markHalfW + HEADER_OMR_GAP_W;
@@ -97,15 +112,35 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
 
   const toYPct = (valueW: number) => valueW / totalHeightW;
 
+  // Shared by both the per-row bubbles and the column-header letters, so both always agree
+  // on exactly which x each option letter/bubble sits at within a column.
+  const optionsAreaLeftForColumn = (columnIndex: number) => {
+    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidthW + COLUMN_GAP_W);
+    const groupLeft = columnLeft + columnWidthW * ROW_LEFT_PADDING_RATIO;
+    return { columnLeft, groupLeft, optionsAreaLeft: groupLeft + labelWidthW };
+  };
+
+  const columnHeaders: ColumnHeaderLabel[] = [];
+  for (let col = 0; col < columns; col++) {
+    const { optionsAreaLeft } = optionsAreaLeftForColumn(col);
+    options.forEach((option, i) => {
+      columnHeaders.push({
+        column: col,
+        option,
+        center: {
+          xPct: optionsAreaLeft + bubbleRadiusW + i * bubblePitchW,
+          yPct: toYPct(columnHeaderCenterW),
+        },
+      });
+    });
+  }
+
   const rows: QuestionRow[] = [];
   for (let q = 1; q <= questionCount; q++) {
     const columnIndex = Math.floor((q - 1) / rowsPerColumn);
     const rowIndex = (q - 1) % rowsPerColumn;
-    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidthW + COLUMN_GAP_W);
     const rowCenterW = gridTopW + rowIndex * ROW_HEIGHT_W + ROW_HEIGHT_W / 2;
-
-    const groupLeft = columnLeft + columnWidthW * ROW_LEFT_PADDING_RATIO;
-    const optionsAreaLeft = groupLeft + labelWidthW;
+    const { columnLeft, groupLeft, optionsAreaLeft } = optionsAreaLeftForColumn(columnIndex);
 
     const rowOptions: BubblePosition[] = options.map((option, i) => ({
       question: q,
@@ -144,6 +179,8 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
     bubbleRadiusPct: bubbleRadiusW,
     rows,
     bubbles: rows.flatMap((row) => row.options),
+    columnHeaderYPct: toYPct(columnHeaderCenterW),
+    columnHeaders,
   };
 }
 
