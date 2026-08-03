@@ -4,7 +4,7 @@ import { AnswerKey, Exam, STORAGE_KEYS } from '../lib/localDb/schema';
 import { mockAnswerKeys, mockExams } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
 import { ensureMigrated } from '../lib/db/client';
-import { listExams, upsertExam, softDeleteExam } from '../lib/db/examsRepository';
+import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
 
 /** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved. */
@@ -47,6 +47,9 @@ async function importFromAsyncStorageIfNeeded(): Promise<void> {
 type ExamStore = {
   hydrated: boolean;
   exams: Exam[];
+  /** Count of all exams ever created, including soft-deleted ones — used to enforce the free
+   *  plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
+  totalExamCount: number;
   answerKeys: AnswerKey[];
 
   hydrate: () => Promise<void>;
@@ -61,6 +64,7 @@ type ExamStore = {
 export const useExamStore = create<ExamStore>((set, get) => ({
   hydrated: false,
   exams: [],
+  totalExamCount: 0,
   answerKeys: [],
 
   hydrate: async () => {
@@ -81,12 +85,12 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       answerKeys = await listAnswerKeys();
     }
 
-    set({ exams, answerKeys, hydrated: true });
+    set({ exams, answerKeys, totalExamCount: await countAllExams(), hydrated: true });
   },
 
   createExam: async (exam) => {
     await upsertExam(exam);
-    set({ exams: await listExams() });
+    set({ exams: await listExams(), totalExamCount: await countAllExams() });
   },
 
   updateExam: async (exam) => {
@@ -96,7 +100,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
 
   deleteExam: async (examId) => {
     await softDeleteExam(examId);
-    set({ exams: await listExams() });
+    set({ exams: await listExams(), totalExamCount: await countAllExams() });
   },
 
   saveAnswerKey: async (answerKey) => {

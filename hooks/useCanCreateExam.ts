@@ -4,12 +4,12 @@ import { useSubscriptionStatus } from './useSubscriptionStatus';
 export const FREE_EXAM_LIMIT = 3;
 
 export function useCanCreateExam() {
-  const examCount = useExamStore((s) => s.exams.length);
+  const totalExamCount = useExamStore((s) => s.totalExamCount);
   const { hasActiveSubscription } = useSubscriptionStatus();
 
   return {
-    canCreate: hasActiveSubscription || examCount < FREE_EXAM_LIMIT,
-    examCount,
+    canCreate: hasActiveSubscription || totalExamCount < FREE_EXAM_LIMIT,
+    examCount: totalExamCount,
     limit: FREE_EXAM_LIMIT,
     hasActiveSubscription,
   };

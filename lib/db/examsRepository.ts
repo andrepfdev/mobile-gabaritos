@@ -1,4 +1,4 @@
-import { eq, isNull } from 'drizzle-orm';
+import { eq, isNull, sql } from 'drizzle-orm';
 import { db } from './client';
 import { exams as examsTable } from './schema';
 import type { Exam } from '../localDb/schema';
@@ -23,6 +23,13 @@ function toExam(row: typeof examsTable.$inferSelect): Exam {
 export async function listExams(): Promise<Exam[]> {
   const rows = await db.select().from(examsTable).where(isNull(examsTable.deletedAt));
   return rows.map(toExam);
+}
+
+/** Counts every exam row, including soft-deleted ones — used to enforce the free plan limit so it
+ *  can't be bypassed by deleting and recreating exams. */
+export async function countAllExams(): Promise<number> {
+  const result = await db.select({ count: sql<number>`count(*)` }).from(examsTable);
+  return result[0]?.count ?? 0;
 }
 
 export async function upsertExam(exam: Exam): Promise<void> {
