@@ -89,7 +89,7 @@ export default function NewExam() {
         </Text>
         <Pressable style={styles.dateInput} onPress={() => setShowDatePicker(true)}>
           <Text variant="body" color={dueDate ? colors.textPrimary : colors.textMuted}>
-            {dueDate ? parseIsoDate(dueDate)?.toLocaleDateString('pt-BR') : 'Selecionar data'}
+            {dueDate ? parseIsoDate(dueDate)?.toLocaleDateString('pt-BR') : 'Selecionar data de entrega'}
           </Text>
         </Pressable>
         {showDatePicker ? (
