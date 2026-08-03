@@ -10,7 +10,6 @@ export type ScanTimings = {
 };
 
 export type ScanResult = {
-  photoUri: string;
   answers: ScanAnswers;
   debug: ScanDebugInfo;
   timings: ScanTimings;

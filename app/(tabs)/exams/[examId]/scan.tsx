@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
@@ -13,6 +14,12 @@ import { useExamStore } from '../../../../store/examStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
 import { analyzeGabarito } from '../../../../lib/gabarito/scan';
+
+// Temp capture files live in the OS cache dir and are never needed again once consumed by the
+// next pipeline step — deleting them here is what keeps scans from silently filling up storage.
+const deleteQuietly = (uri: string) => {
+  FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+};
 
 export default function ScanGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -73,6 +80,8 @@ export default function ScanGabarito() {
         });
         t2 = Date.now();
         normalizedUri = normalized.uri;
+        // The raw capture is fully superseded by the normalized copy from here on.
+        deleteQuietly(photo.uri);
       } catch {
         Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
         return;
@@ -85,7 +94,6 @@ export default function ScanGabarito() {
         const { answers, debug } = await analyzeGabarito(normalizedUri, layout);
         const t3 = Date.now();
         setResult({
-          photoUri: normalizedUri,
           answers,
           debug,
           timings: {
@@ -101,6 +109,9 @@ export default function ScanGabarito() {
           'Não identificamos os cantos da folha',
           'Reenquadre a folha, garanta boa iluminação e capture de novo.',
         );
+      } finally {
+        // Consumed by analyzeGabarito above either way — never read again after this point.
+        deleteQuietly(normalizedUri);
       }
     } finally {
       setCapturing(false);
