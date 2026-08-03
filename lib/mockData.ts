@@ -106,10 +106,11 @@ export const mockExamProgress: Record<string, number> = {
 };
 
 // All 10 questions pre-filled, cycling through every option letter so the calibration sheet
-// exercises every bubble column when scanned back.
+// exercises every bubble column when scanned back. Keys are 0-indexed (question N -> key N-1),
+// matching the convention used by AnswerGrid and scoreAgainstAnswerKey.
 export const mockAnswerKeys: AnswerKey[] = [
   {
     examId: CALIBRATION_EXAM_ID,
-    answers: { 1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E', 6: 'A', 7: 'B', 8: 'C', 9: 'D', 10: 'E' },
+    answers: { 0: 'A', 1: 'B', 2: 'C', 3: 'D', 4: 'E', 5: 'A', 6: 'B', 7: 'C', 8: 'D', 9: 'E' },
   },
 ];
