@@ -68,13 +68,6 @@
       "expo-sqlite",
       "expo-sharing",
       "expo-status-bar",
-      [
-        "expo-navigation-bar",
-        {
-          "style": "dark",
-          "enforceContrast": false
-        }
-      ],
       "@react-native-community/datetimepicker"
     ],
     "extra": {

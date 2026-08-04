@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,9 +22,14 @@ export function FloatingTabBar({ items }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  // Android's 3-button nav bar is a fixed 48dp (AOSP `navigation_bar_height`), but under
+  // edge-to-edge on some device/library combos `insets.bottom` under-reports it — flooring at
+  // 48 on Android keeps this bar's dark background reaching the real screen edge instead of
+  // leaving a gap where the light app background shows through behind the nav buttons.
+  const bottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 48) : insets.bottom;
 
   return (
-    <View style={[styles.bar, { paddingBottom: insets.bottom + spacing.xs }]}>
+    <View style={[styles.bar, { paddingBottom: bottomInset + spacing.xs }]}>
       {items.map((item) => (
         <TabBarButton
           key={item.key}
