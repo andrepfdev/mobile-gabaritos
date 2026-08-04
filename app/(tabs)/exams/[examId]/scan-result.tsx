@@ -10,6 +10,7 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { useClassStore } from '../../../../store/classStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { optionsForCount } from '../../../../lib/gabarito/layout';
 import { AMBIGUOUS_RATIO_THRESHOLD, scoreAgainstAnswerKey, unansweredRatio } from '../../../../lib/gabarito/scan';
@@ -26,17 +27,36 @@ function LegendItem({ color, borderColor, label }: { color: string; borderColor?
 }
 
 export default function ScanResult() {
-  const { examId } = useLocalSearchParams<{ examId: string }>();
+  const { examId, studentId } = useLocalSearchParams<{ examId: string; studentId?: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const saveExamResult = useExamStore((s) => s.saveExamResult);
   const result = useScanStore((s) => s.result);
+  const students = useClassStore((s) => s.students);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
+  const student = studentId ? students.find((s) => s.id === studentId) : undefined;
 
-  const onScanAgain = () => router.replace(`/exams/${examId}/scan`);
-  const onFinish = () => router.replace(`/exams/${examId}`);
+  const onScanAgain = () =>
+    router.replace(studentId ? `/exams/${examId}/scan?studentId=${studentId}` : `/exams/${examId}/scan`);
+  const onFinish = async () => {
+    if (studentId) {
+      await saveExamResult({
+        examId,
+        studentId,
+        answers: answers as Record<number, string>,
+        correctCount,
+        wrongCount,
+        blankCount,
+        scorePercent,
+      });
+      router.replace(`/exams/${examId}/roster`);
+      return;
+    }
+    router.replace(`/exams/${examId}`);
+  };
 
   // The full analysis already runs during capture (scan.tsx), so by the time this screen
   // mounts the result is ready — no loading state, no re-analysis here.
@@ -62,7 +82,7 @@ export default function ScanResult() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="h1" weight="bold" style={styles.title}>
-          Resultado
+          {student ? `Resultado — ${student.name}` : 'Resultado'}
         </Text>
 
         {isAmbiguous ? (

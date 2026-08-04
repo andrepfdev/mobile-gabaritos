@@ -6,6 +6,7 @@ import { generateExamCode } from '../lib/gabarito/code';
 import { ensureMigrated } from '../lib/db/client';
 import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
+import { ExamResultRecord, listAllExamResults, upsertExamResult } from '../lib/db/examResultsRepository';
 
 /** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved. */
 function backfillExam(exam: Exam, sequence: number): Exam {
@@ -51,12 +52,14 @@ type ExamStore = {
    *  plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
   totalExamCount: number;
   answerKeys: AnswerKey[];
+  examResults: ExamResultRecord[];
 
   hydrate: () => Promise<void>;
   createExam: (exam: Exam) => Promise<void>;
   updateExam: (exam: Exam) => Promise<void>;
   deleteExam: (examId: string) => Promise<void>;
   saveAnswerKey: (answerKey: AnswerKey) => Promise<void>;
+  saveExamResult: (result: ExamResultRecord) => Promise<void>;
 
   getAnswerKey: (examId: string) => AnswerKey | undefined;
 };
@@ -66,6 +69,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   exams: [],
   totalExamCount: 0,
   answerKeys: [],
+  examResults: [],
 
   hydrate: async () => {
     await ensureMigrated();
@@ -85,7 +89,9 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       answerKeys = await listAnswerKeys();
     }
 
-    set({ exams, answerKeys, totalExamCount: await countAllExams(), hydrated: true });
+    const examResults = await listAllExamResults();
+
+    set({ exams, answerKeys, examResults, totalExamCount: await countAllExams(), hydrated: true });
   },
 
   createExam: async (exam) => {
@@ -106,6 +112,11 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   saveAnswerKey: async (answerKey) => {
     await upsertAnswerKey(answerKey);
     set({ answerKeys: await listAnswerKeys() });
+  },
+
+  saveExamResult: async (result) => {
+    await upsertExamResult(result);
+    set({ examResults: await listAllExamResults() });
   },
 
   getAnswerKey: (examId) => get().answerKeys.find((key) => key.examId === examId),

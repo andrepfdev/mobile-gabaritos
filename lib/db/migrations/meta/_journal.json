@@ -29,6 +29,13 @@
       "when": 1785631161720,
       "tag": "0003_amazing_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1785631161721,
+      "tag": "0004_solid_black_bolt",
+      "breakpoints": true
     }
   ]
 }

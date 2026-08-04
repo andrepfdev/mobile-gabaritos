@@ -34,7 +34,7 @@ export default function Classes() {
           const subtitle = [item.turma, item.subject].filter(Boolean).join(' — ');
           return (
             <Pressable onPress={() => router.push(`/classes/${item.id}`)}>
-              <Card variant="grayLight" style={styles.card}>
+              <Card variant="light" style={styles.card}>
                 <Text variant="h2" weight="bold">
                   {item.name}
                 </Text>

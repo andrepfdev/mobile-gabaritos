@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Text } from '../../../components/ui/Text';
 import { AuthTextField } from '../../../components/auth/AuthTextField';
 import { PillButton } from '../../../components/ui/PillButton';
 import { colors, radii, spacing } from '../../../theme/tokens';
 import { useExamStore } from '../../../store/examStore';
+import { useClassStore } from '../../../store/classStore';
 import { useCanCreateExam } from '../../../hooks/useCanCreateExam';
 import { generateExamCode } from '../../../lib/gabarito/code';
 
@@ -30,6 +32,7 @@ export default function NewExam() {
   const router = useRouter();
   const createExam = useExamStore((s) => s.createExam);
   const examCount = useExamStore((s) => s.exams.length);
+  const classes = useClassStore((s) => s.classes);
   const { canCreate } = useCanCreateExam();
 
   useEffect(() => {
@@ -40,13 +43,15 @@ export default function NewExam() {
 
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
-  const [className, setClassName] = useState('');
+  const [classId, setClassId] = useState<string | undefined>(undefined);
+  const [classPickerOpen, setClassPickerOpen] = useState(false);
   const [questionCount, setQuestionCount] = useState('10');
   const [dueDate, setDueDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
 
   const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
+  const selectedClass = classes.find((c) => c.id === classId);
 
   const onSubmit = async () => {
     if (!title.trim() || !questionCount.trim()) return;
@@ -55,7 +60,8 @@ export default function NewExam() {
       id,
       title: title.trim(),
       subject: subject.trim() || undefined,
-      className: className.trim() || undefined,
+      className: selectedClass ? selectedClass.turma || selectedClass.name : undefined,
+      classId: selectedClass?.id,
       questionCount: Math.min(MAX_QUESTIONS, Math.max(1, Number(questionCount) || 10)),
       dueDate: dueDate.trim() || undefined,
       createdAt: new Date().toISOString(),
@@ -76,7 +82,14 @@ export default function NewExam() {
         </Text>
         <AuthTextField label="Título" value={title} onChangeText={setTitle} placeholder="Avaliação de Matemática" />
         <AuthTextField label="Disciplina" value={subject} onChangeText={setSubject} placeholder="Matemática" />
-        <AuthTextField label="Turma" value={className} onChangeText={setClassName} placeholder="9º Ano B" />
+        <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.dateLabel}>
+          Turma
+        </Text>
+        <Pressable style={styles.dateInput} onPress={() => setClassPickerOpen(true)}>
+          <Text variant="body" color={selectedClass ? colors.textPrimary : colors.textMuted}>
+            {selectedClass ? selectedClass.turma || selectedClass.name : 'Sem turma'}
+          </Text>
+        </Pressable>
         <AuthTextField
           label="Número de questões"
           value={questionCount}
@@ -122,6 +135,43 @@ export default function NewExam() {
         </View>
         <PillButton title="Criar prova" onPress={onSubmit} />
       </ScrollView>
+
+      <Modal visible={classPickerOpen} transparent animationType="fade" onRequestClose={() => setClassPickerOpen(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setClassPickerOpen(false)}>
+          <View style={styles.modalSheet}>
+            <Text variant="h2" weight="bold" style={styles.modalTitle}>
+              Vincular a uma turma
+            </Text>
+            <Pressable
+              style={styles.modalOption}
+              onPress={() => {
+                setClassId(undefined);
+                setClassPickerOpen(false);
+              }}
+            >
+              <Text variant="body" weight={classId === undefined ? 'medium' : 'regular'}>
+                Sem turma
+              </Text>
+              {classId === undefined ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
+            </Pressable>
+            {classes.map((classRecord) => (
+              <Pressable
+                key={classRecord.id}
+                style={styles.modalOption}
+                onPress={() => {
+                  setClassId(classRecord.id);
+                  setClassPickerOpen(false);
+                }}
+              >
+                <Text variant="body" weight={classId === classRecord.id ? 'medium' : 'regular'}>
+                  {classRecord.turma || classRecord.name}
+                </Text>
+                {classId === classRecord.id ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -157,5 +207,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.md,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+  },
+  modalTitle: {
+    marginBottom: spacing.md,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.grayLight,
   },
 });

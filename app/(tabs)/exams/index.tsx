@@ -8,7 +8,7 @@ import { ExamCard } from '../../../components/exam/ExamCard';
 import { SortButton } from '../../../components/exam/SortButton';
 import { colors, radii, spacing } from '../../../theme/tokens';
 import { useExamStore } from '../../../store/examStore';
-import { mockExamProgress } from '../../../lib/mockData';
+import { useClassStore } from '../../../store/classStore';
 import { useCanCreateExam } from '../../../hooks/useCanCreateExam';
 
 type StatusGroup = 'pending' | 'done';
@@ -28,6 +28,8 @@ const SORT_LABELS: Record<SortMode, string> = {
 export default function Exams() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
+  const examResults = useExamStore((s) => s.examResults);
+  const classStudents = useClassStore((s) => s.students);
   const [activeTab, setActiveTab] = useState<StatusGroup>('pending');
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('dueDate');
@@ -63,6 +65,16 @@ export default function Exams() {
 
   const toggleSortMode = () => {
     setSortMode((prev) => (prev === 'dueDate' ? 'recent' : 'dueDate'));
+  };
+
+  const examRosterStudents = (exam: (typeof exams)[number]) =>
+    exam.classId ? classStudents.filter((student) => student.classId === exam.classId) : undefined;
+
+  const examProgress = (exam: (typeof exams)[number]) => {
+    const roster = examRosterStudents(exam);
+    if (!roster || roster.length === 0) return 0;
+    const corrected = examResults.filter((result) => result.examId === exam.id).length;
+    return corrected / roster.length;
   };
 
   return (
@@ -115,7 +127,8 @@ export default function Exams() {
         renderItem={({ item }) => (
           <ExamCard
             exam={item}
-            progress={mockExamProgress[item.id] ?? 0}
+            progress={examProgress(item)}
+            rosterStudents={examRosterStudents(item)}
             onPress={() => router.push(`/exams/${item.id}`)}
           />
         )}

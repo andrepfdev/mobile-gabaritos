@@ -7,6 +7,7 @@ import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useClassStore } from '../../../../store/classStore';
+import { useExamStore } from '../../../../store/examStore';
 
 export default function ClassDetail() {
   const { classId } = useLocalSearchParams<{ classId: string }>();
@@ -14,6 +15,8 @@ export default function ClassDetail() {
   const classes = useClassStore((s) => s.classes);
   const students = useClassStore((s) => s.students);
   const deleteClass = useClassStore((s) => s.deleteClass);
+  const exams = useExamStore((s) => s.exams);
+  const examResults = useExamStore((s) => s.examResults);
 
   const classRecord = classes.find((c) => c.id === classId);
 
@@ -24,6 +27,8 @@ export default function ClassDetail() {
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     [students, classId],
   );
+
+  const classExams = useMemo(() => exams.filter((exam) => exam.classId === classId), [exams, classId]);
 
   if (!classRecord) {
     return (
@@ -116,6 +121,34 @@ export default function ClassDetail() {
           </Text>
         )}
 
+        {classExams.length > 0 ? (
+          <>
+            <Text variant="h2" weight="bold" style={styles.examsHeader}>
+              Provas
+            </Text>
+            <Card variant="light" style={styles.studentsCard} padded={false}>
+              {classExams.map((exam, index) => {
+                const corrected = examResults.filter((r) => r.examId === exam.id).length;
+                return (
+                  <Pressable
+                    key={exam.id}
+                    onPress={() => router.push(`/exams/${exam.id}`)}
+                    style={[styles.studentRow, index < classExams.length - 1 && styles.studentRowDivider]}
+                  >
+                    <Text variant="body" weight="medium" style={styles.studentName}>
+                      {exam.title}
+                    </Text>
+                    <Text variant="caption" color={colors.textMuted}>
+                      {`${corrected}/${classStudents.length} corrigidas`}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={styles.examChevron} />
+                  </Pressable>
+                );
+              })}
+            </Card>
+          </>
+        ) : null}
+
         <Pressable onPress={onDelete} style={styles.deleteButton} hitSlop={8}>
           <Text variant="body" weight="medium" color={colors.danger}>
             Excluir turma
@@ -198,6 +231,12 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     marginBottom: spacing.lg,
+  },
+  examsHeader: {
+    marginBottom: spacing.md,
+  },
+  examChevron: {
+    marginLeft: spacing.sm,
   },
   deleteButton: {
     alignSelf: 'center',

@@ -12,6 +12,8 @@ export type ExamCardProps = {
   exam: Exam;
   progress?: number; // 0-1, omitted/ignored when status is 'waiting'
   onPress?: () => void;
+  /** Overrides exam.students (legacy, always empty) with the real roster of the linked turma. */
+  rosterStudents?: { id: string; name: string; avatarUri?: string }[];
 };
 
 function formatDueDate(dueDate?: string) {
@@ -20,8 +22,11 @@ function formatDueDate(dueDate?: string) {
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-export function ExamCard({ exam, progress = 0, onPress }: ExamCardProps) {
-  const avatars: Avatar[] = exam.students.map((s) => ({ uri: s.avatarUri, initials: s.name.slice(0, 2).toUpperCase() }));
+export function ExamCard({ exam, progress = 0, onPress, rosterStudents }: ExamCardProps) {
+  const avatars: Avatar[] = (rosterStudents ?? exam.students).map((s) => ({
+    uri: s.avatarUri,
+    initials: s.name.slice(0, 2).toUpperCase(),
+  }));
   const isWaiting = exam.status === 'waiting';
   const dueDateLabel = formatDueDate(exam.dueDate);
 

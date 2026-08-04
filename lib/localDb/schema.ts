@@ -6,6 +6,7 @@ export type Exam = {
   title: string;
   subject?: string;
   className?: string;
+  classId?: string;
   questionCount: number;
   dueDate?: string; // ISO date
   createdAt: string; // ISO date-time

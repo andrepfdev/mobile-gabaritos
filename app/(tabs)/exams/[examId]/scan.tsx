@@ -11,6 +11,7 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { AlignmentGuide } from '../../../../components/gabarito/AlignmentGuide';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { useClassStore } from '../../../../store/classStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
 import { analyzeGabarito } from '../../../../lib/gabarito/scan';
@@ -22,14 +23,16 @@ const deleteQuietly = (uri: string) => {
 };
 
 export default function ScanGabarito() {
-  const { examId } = useLocalSearchParams<{ examId: string }>();
+  const { examId, studentId } = useLocalSearchParams<{ examId: string; studentId?: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const students = useClassStore((s) => s.students);
   const setResult = useScanStore((s) => s.setResult);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
+  const student = studentId ? students.find((s) => s.id === studentId) : undefined;
   const layout = exam ? buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount)) : null;
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -103,7 +106,9 @@ export default function ScanGabarito() {
             totalMs: Math.round(t3 - t0),
           },
         });
-        router.push(`/exams/${examId}/scan-result`);
+        router.push(
+          studentId ? `/exams/${examId}/scan-result?studentId=${studentId}` : `/exams/${examId}/scan-result`,
+        );
       } catch {
         Alert.alert(
           'Não identificamos os cantos da folha',
@@ -161,6 +166,13 @@ export default function ScanGabarito() {
       />
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
+        {student ? (
+          <Card variant="light" style={styles.tipCard}>
+            <Text variant="caption" weight="medium">
+              {`Lendo gabarito de: ${student.name}`}
+            </Text>
+          </Card>
+        ) : null}
         <Card variant={codeVerified ? 'pink' : 'light'} style={styles.tipCard}>
           <Text variant="caption" weight="medium">
             {codeError ??

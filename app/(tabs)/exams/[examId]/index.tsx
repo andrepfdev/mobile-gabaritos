@@ -90,17 +90,21 @@ export default function ExamDetail() {
 
         <Card variant="accent" style={styles.card}>
           <Text variant="h2" weight="bold" color={colors.white}>
-            Escanear gabarito
+            {exam.classId ? 'Corrigir turma' : 'Escanear gabarito'}
           </Text>
           <Text variant="body" color={colors.white} style={styles.cardSubtitle}>
             {isCalibration
               ? 'Escaneie a folha de calibração impressa para testar se a câmera do seu celular lê bem as marcações.'
-              : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
+              : exam.classId
+                ? 'Veja a lista de alunos da turma e corrija um por um.'
+                : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
           </Text>
           <PillButton
-            title="Escanear"
+            title={exam.classId ? 'Ver alunos' : 'Escanear'}
             variant="dark"
-            onPress={() => router.push(`/exams/${examId}/scan`)}
+            onPress={() =>
+              router.push(exam.classId ? `/exams/${examId}/roster` : `/exams/${examId}/scan`)
+            }
             disabled={!answerKey}
           />
         </Card>
