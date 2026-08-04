@@ -74,7 +74,7 @@ export default function ClassDetail() {
             onPress={() => router.push(`/classes/${classRecord.id}/edit`)}
             hitSlop={8}
           >
-            <Ionicons name="pencil" size={18} color={colors.textPrimary} />
+            <Ionicons name="brush" size={18} color={colors.textPrimary} />
           </Pressable>
         </View>
 
