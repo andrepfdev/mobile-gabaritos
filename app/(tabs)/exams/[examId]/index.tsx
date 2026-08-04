@@ -14,11 +14,13 @@ export default function ExamDetail() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const examClasses = useExamStore((s) => s.examClasses);
   const deleteExam = useExamStore((s) => s.deleteExam);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
   const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const linkedClassCount = exam ? examClasses.filter((l) => l.examId === exam.id).length : 0;
 
   if (!exam) {
     return (
@@ -90,20 +92,20 @@ export default function ExamDetail() {
 
         <Card variant="accent" style={styles.card}>
           <Text variant="h2" weight="bold" color={colors.white}>
-            {exam.classId ? 'Corrigir turma' : 'Escanear gabarito'}
+            {linkedClassCount > 1 ? 'Corrigir turmas' : linkedClassCount === 1 ? 'Corrigir turma' : 'Escanear gabarito'}
           </Text>
           <Text variant="body" color={colors.white} style={styles.cardSubtitle}>
             {isCalibration
               ? 'Escaneie a folha de calibração impressa para testar se a câmera do seu celular lê bem as marcações.'
-              : exam.classId
-                ? 'Veja a lista de alunos da turma e corrija um por um.'
+              : linkedClassCount > 0
+                ? 'Veja a lista de alunos e corrija um por um.'
                 : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
           </Text>
           <PillButton
-            title={exam.classId ? 'Ver alunos' : 'Escanear'}
+            title={linkedClassCount > 0 ? 'Ver alunos' : 'Escanear'}
             variant="dark"
             onPress={() =>
-              router.push(exam.classId ? `/exams/${examId}/roster` : `/exams/${examId}/scan`)
+              router.push(linkedClassCount > 0 ? `/exams/${examId}/roster` : `/exams/${examId}/scan`)
             }
             disabled={!answerKey}
           />

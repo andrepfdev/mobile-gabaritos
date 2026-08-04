@@ -12,7 +12,6 @@ export const exams = sqliteTable('exams', {
   title: text('title').notNull(),
   subject: text('subject'),
   className: text('class_name'),
-  classId: text('class_id'),
   questionCount: integer('question_count').notNull(),
   optionsCount: integer('options_count').notNull().default(5),
   dueDate: text('due_date'),
@@ -65,4 +64,12 @@ export const examResults = sqliteTable('exam_results', {
   blankCount: integer('blank_count').notNull(),
   scorePercent: integer('score_percent').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/** Which turmas a prova is applied to — N:N, since the same prova (same gabarito/QR) can be
+ *  applied to several turmas at once. */
+export const examClasses = sqliteTable('exam_classes', {
+  id: text('id').primaryKey(),
+  examId: text('exam_id').notNull(),
+  classId: text('class_id').notNull(),
 });

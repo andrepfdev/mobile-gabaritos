@@ -29,6 +29,7 @@ export default function Exams() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const examResults = useExamStore((s) => s.examResults);
+  const examClasses = useExamStore((s) => s.examClasses);
   const classStudents = useClassStore((s) => s.students);
   const [activeTab, setActiveTab] = useState<StatusGroup>('pending');
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
@@ -45,8 +46,11 @@ export default function Exams() {
     [exams],
   );
 
-  const examRosterStudents = (exam: (typeof exams)[number]) =>
-    exam.classId ? classStudents.filter((student) => student.classId === exam.classId) : undefined;
+  const examRosterStudents = (exam: (typeof exams)[number]) => {
+    const classIds = examClasses.filter((l) => l.examId === exam.id).map((l) => l.classId);
+    if (classIds.length === 0) return undefined;
+    return classStudents.filter((student) => classIds.includes(student.classId));
+  };
 
   // Turmas vinculadas: "corrigida" quando todo aluno da turma já tem nota lançada. Provas
   // avulsas (sem turma) não têm nenhum jeito de marcar status hoje, então ficam sempre pendentes.
@@ -72,7 +76,7 @@ export default function Exams() {
     });
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exams, examResults, classStudents, activeTab, selectedClassName, sortMode]);
+  }, [exams, examResults, examClasses, classStudents, activeTab, selectedClassName, sortMode]);
 
   const toggleSortMode = () => {
     setSortMode((prev) => (prev === 'dueDate' ? 'recent' : 'dueDate'));

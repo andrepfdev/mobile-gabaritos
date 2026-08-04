@@ -8,27 +8,38 @@ import { Card } from '../../../../components/ui/Card';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useClassStore } from '../../../../store/classStore';
+import { StudentRecord } from '../../../../lib/db/studentsRepository';
 
 export default function ExamRoster() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const examResults = useExamStore((s) => s.examResults);
+  const examClasses = useExamStore((s) => s.examClasses);
   const classes = useClassStore((s) => s.classes);
   const students = useClassStore((s) => s.students);
 
   const exam = exams.find((e) => e.id === examId);
-  const classRecord = classes.find((c) => c.id === exam?.classId);
 
-  const rosterStudents = useMemo(
+  const linkedClasses = useMemo(() => {
+    const classIds = examClasses.filter((l) => l.examId === examId).map((l) => l.classId);
+    return classes
+      .filter((c) => classIds.includes(c.id))
+      .sort((a, b) => (a.turma || a.name).localeCompare(b.turma || b.name, 'pt-BR'));
+  }, [examClasses, classes, examId]);
+
+  const studentsByClass = useMemo(
     () =>
-      students
-        .filter((student) => student.classId === exam?.classId)
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-    [students, exam?.classId],
+      linkedClasses.map((classRecord) => ({
+        classRecord,
+        students: students
+          .filter((student) => student.classId === classRecord.id)
+          .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
+      })),
+    [linkedClasses, students],
   );
 
-  if (!exam || !classRecord) {
+  if (!exam || linkedClasses.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <Text variant="body" style={styles.content}>
@@ -37,6 +48,36 @@ export default function ExamRoster() {
       </SafeAreaView>
     );
   }
+
+  const renderStudentRow = (student: StudentRecord, isLast: boolean) => {
+    const result = examResults.find((r) => r.examId === exam.id && r.studentId === student.id);
+    return (
+      <Pressable
+        key={student.id}
+        onPress={() => router.push(`/exams/${exam.id}/scan?studentId=${student.id}`)}
+        style={[styles.studentRow, !isLast && styles.studentRowDivider]}
+      >
+        <View style={styles.studentAvatar}>
+          <Text variant="caption" weight="bold" color={colors.textOnDark}>
+            {student.name.trim().charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <Text variant="body" weight="medium" style={styles.studentName}>
+          {student.name}
+        </Text>
+        {result ? (
+          <Text variant="caption" weight="medium" color={colors.success}>
+            {`Nota ${result.scorePercent}`}
+          </Text>
+        ) : (
+          <Text variant="caption" color={colors.textMuted}>
+            Pendente
+          </Text>
+        )}
+        <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={styles.chevron} />
+      </Pressable>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -51,48 +92,27 @@ export default function ExamRoster() {
           {exam.title}
         </Text>
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
-          {classRecord.turma || classRecord.name}
+          {linkedClasses.map((c) => c.turma || c.name).join(', ')}
         </Text>
 
-        {rosterStudents.length > 0 ? (
-          <Card variant="light" style={styles.studentsCard} padded={false}>
-            {rosterStudents.map((student, index) => {
-              const result = examResults.find(
-                (r) => r.examId === exam.id && r.studentId === student.id,
-              );
-              return (
-                <Pressable
-                  key={student.id}
-                  onPress={() => router.push(`/exams/${exam.id}/scan?studentId=${student.id}`)}
-                  style={[styles.studentRow, index < rosterStudents.length - 1 && styles.studentRowDivider]}
-                >
-                  <View style={styles.studentAvatar}>
-                    <Text variant="caption" weight="bold" color={colors.textOnDark}>
-                      {student.name.trim().charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <Text variant="body" weight="medium" style={styles.studentName}>
-                    {student.name}
-                  </Text>
-                  {result ? (
-                    <Text variant="caption" weight="medium" color={colors.success}>
-                      {`Nota ${result.scorePercent}`}
-                    </Text>
-                  ) : (
-                    <Text variant="caption" color={colors.textMuted}>
-                      Pendente
-                    </Text>
-                  )}
-                  <Ionicons name="chevron-forward" size={18} color={colors.textMuted} style={styles.chevron} />
-                </Pressable>
-              );
-            })}
-          </Card>
-        ) : (
-          <Text variant="body" color={colors.textMuted} style={styles.empty}>
-            Essa turma ainda não tem alunos cadastrados.
-          </Text>
-        )}
+        {studentsByClass.map(({ classRecord, students: classStudents }) => (
+          <View key={classRecord.id} style={styles.classSection}>
+            <Text variant="h2" weight="bold" style={styles.classHeader}>
+              {classRecord.turma || classRecord.name}
+            </Text>
+            {classStudents.length > 0 ? (
+              <Card variant="light" style={styles.studentsCard} padded={false}>
+                {classStudents.map((student, index) =>
+                  renderStudentRow(student, index === classStudents.length - 1),
+                )}
+              </Card>
+            ) : (
+              <Text variant="body" color={colors.textMuted} style={styles.empty}>
+                Essa turma ainda não tem alunos cadastrados.
+              </Text>
+            )}
+          </View>
+        ))}
       </ScrollView>
     </SafeAreaView>
   );
@@ -126,6 +146,12 @@ const styles = StyleSheet.create({
   subtitle: {
     marginBottom: spacing.md,
   },
+  classSection: {
+    marginBottom: spacing.lg,
+  },
+  classHeader: {
+    marginBottom: spacing.sm,
+  },
   studentsCard: {
     overflow: 'hidden',
   },
@@ -156,6 +182,6 @@ const styles = StyleSheet.create({
   },
   empty: {
     textAlign: 'center',
-    marginTop: spacing.lg,
+    marginBottom: spacing.md,
   },
 });

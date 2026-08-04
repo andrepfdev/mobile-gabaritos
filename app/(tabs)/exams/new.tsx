@@ -28,9 +28,14 @@ function toIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function generateExamId(): string {
+  return `exam-${Date.now()}`;
+}
+
 export default function NewExam() {
   const router = useRouter();
   const createExam = useExamStore((s) => s.createExam);
+  const linkExamClasses = useExamStore((s) => s.linkExamClasses);
   const examCount = useExamStore((s) => s.exams.length);
   const classes = useClassStore((s) => s.classes);
   const { canCreate } = useCanCreateExam();
@@ -43,7 +48,7 @@ export default function NewExam() {
 
   const [title, setTitle] = useState('');
   const [subject, setSubject] = useState('');
-  const [classId, setClassId] = useState<string | undefined>(undefined);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [classPickerOpen, setClassPickerOpen] = useState(false);
   const [questionCount, setQuestionCount] = useState('10');
   const [dueDate, setDueDate] = useState('');
@@ -51,17 +56,20 @@ export default function NewExam() {
   const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
 
   const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
-  const selectedClass = classes.find((c) => c.id === classId);
+  const selectedClasses = classes.filter((c) => selectedClassIds.includes(c.id));
+
+  const toggleClassId = (id: string) => {
+    setSelectedClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
+  };
 
   const onSubmit = async () => {
     if (!title.trim() || !questionCount.trim()) return;
-    const id = `exam-${Date.now()}`;
+    const id = generateExamId();
     await createExam({
       id,
       title: title.trim(),
       subject: subject.trim() || undefined,
-      className: selectedClass ? selectedClass.turma || selectedClass.name : undefined,
-      classId: selectedClass?.id,
+      className: selectedClasses.map((c) => c.turma || c.name).join(', ') || undefined,
       questionCount: Math.min(MAX_QUESTIONS, Math.max(1, Number(questionCount) || 10)),
       dueDate: dueDate.trim() || undefined,
       createdAt: new Date().toISOString(),
@@ -71,6 +79,9 @@ export default function NewExam() {
       code: generateExamCode(subject.trim() || undefined, examCount + 1),
       optionsCount,
     });
+    if (selectedClassIds.length > 0) {
+      await linkExamClasses(id, selectedClassIds);
+    }
     router.replace(`/exams/${id}`);
   };
 
@@ -83,11 +94,13 @@ export default function NewExam() {
         <AuthTextField label="Título" value={title} onChangeText={setTitle} placeholder="Avaliação de Matemática" />
         <AuthTextField label="Disciplina" value={subject} onChangeText={setSubject} placeholder="Matemática" />
         <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.dateLabel}>
-          Turma
+          Turma(s)
         </Text>
         <Pressable style={styles.dateInput} onPress={() => setClassPickerOpen(true)}>
-          <Text variant="body" color={selectedClass ? colors.textPrimary : colors.textMuted}>
-            {selectedClass ? selectedClass.turma || selectedClass.name : 'Sem turma'}
+          <Text variant="body" color={selectedClasses.length > 0 ? colors.textPrimary : colors.textMuted}>
+            {selectedClasses.length > 0
+              ? selectedClasses.map((c) => c.turma || c.name).join(', ')
+              : 'Sem turma'}
           </Text>
         </Pressable>
         <AuthTextField
@@ -138,38 +151,38 @@ export default function NewExam() {
 
       <Modal visible={classPickerOpen} transparent animationType="fade" onRequestClose={() => setClassPickerOpen(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setClassPickerOpen(false)}>
-          <View style={styles.modalSheet}>
+          <Pressable style={styles.modalSheet} onPress={(e) => e.stopPropagation()}>
             <Text variant="h2" weight="bold" style={styles.modalTitle}>
-              Vincular a uma turma
+              Vincular a turmas
             </Text>
             <Pressable
               style={styles.modalOption}
-              onPress={() => {
-                setClassId(undefined);
-                setClassPickerOpen(false);
-              }}
+              onPress={() => setSelectedClassIds([])}
             >
-              <Text variant="body" weight={classId === undefined ? 'medium' : 'regular'}>
+              <Text variant="body" weight={selectedClassIds.length === 0 ? 'medium' : 'regular'}>
                 Sem turma
               </Text>
-              {classId === undefined ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
+              {selectedClassIds.length === 0 ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
             </Pressable>
-            {classes.map((classRecord) => (
-              <Pressable
-                key={classRecord.id}
-                style={styles.modalOption}
-                onPress={() => {
-                  setClassId(classRecord.id);
-                  setClassPickerOpen(false);
-                }}
-              >
-                <Text variant="body" weight={classId === classRecord.id ? 'medium' : 'regular'}>
-                  {classRecord.turma || classRecord.name}
-                </Text>
-                {classId === classRecord.id ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
-              </Pressable>
-            ))}
-          </View>
+            {classes.map((classRecord) => {
+              const checked = selectedClassIds.includes(classRecord.id);
+              return (
+                <Pressable
+                  key={classRecord.id}
+                  style={styles.modalOption}
+                  onPress={() => toggleClassId(classRecord.id)}
+                >
+                  <Text variant="body" weight={checked ? 'medium' : 'regular'}>
+                    {classRecord.turma || classRecord.name}
+                  </Text>
+                  {checked ? <Ionicons name="checkmark" size={18} color={colors.coral} /> : null}
+                </Pressable>
+              );
+            })}
+            <View style={styles.modalDoneButton}>
+              <PillButton title="Pronto" onPress={() => setClassPickerOpen(false)} />
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
     </SafeAreaView>
@@ -230,5 +243,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.grayLight,
+  },
+  modalDoneButton: {
+    marginTop: spacing.md,
   },
 });

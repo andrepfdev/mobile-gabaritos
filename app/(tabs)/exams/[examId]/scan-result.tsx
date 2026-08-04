@@ -32,6 +32,7 @@ export default function ScanResult() {
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
   const examResults = useExamStore((s) => s.examResults);
+  const examClasses = useExamStore((s) => s.examClasses);
   const saveExamResult = useExamStore((s) => s.saveExamResult);
   const result = useScanStore((s) => s.result);
   const students = useClassStore((s) => s.students);
@@ -40,11 +41,10 @@ export default function ScanResult() {
   const answerKey = answerKeys.find((k) => k.examId === examId);
   const student = studentId ? students.find((s) => s.id === studentId) : undefined;
 
-  const rosterStudents = exam?.classId
-    ? students
-        .filter((s) => s.classId === exam.classId)
-        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-    : [];
+  const linkedClassIds = examClasses.filter((l) => l.examId === examId).map((l) => l.classId);
+  const rosterStudents = students
+    .filter((s) => linkedClassIds.includes(s.classId))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const nextPendingStudent = studentId
     ? rosterStudents.find(
         (s) => s.id !== studentId && !examResults.some((r) => r.examId === examId && r.studentId === s.id),

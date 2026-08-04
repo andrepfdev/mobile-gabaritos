@@ -17,6 +17,7 @@ export default function ClassDetail() {
   const deleteClass = useClassStore((s) => s.deleteClass);
   const exams = useExamStore((s) => s.exams);
   const examResults = useExamStore((s) => s.examResults);
+  const examClasses = useExamStore((s) => s.examClasses);
 
   const classRecord = classes.find((c) => c.id === classId);
 
@@ -28,7 +29,10 @@ export default function ClassDetail() {
     [students, classId],
   );
 
-  const classExams = useMemo(() => exams.filter((exam) => exam.classId === classId), [exams, classId]);
+  const classExams = useMemo(
+    () => exams.filter((exam) => examClasses.some((l) => l.classId === classId && l.examId === exam.id)),
+    [exams, examClasses, classId],
+  );
 
   if (!classRecord) {
     return (
@@ -128,7 +132,9 @@ export default function ClassDetail() {
             </Text>
             <Card variant="light" style={styles.studentsCard} padded={false}>
               {classExams.map((exam, index) => {
-                const corrected = examResults.filter((r) => r.examId === exam.id).length;
+                const corrected = examResults.filter(
+                  (r) => r.examId === exam.id && classStudents.some((s) => s.id === r.studentId),
+                ).length;
                 return (
                   <Pressable
                     key={exam.id}
