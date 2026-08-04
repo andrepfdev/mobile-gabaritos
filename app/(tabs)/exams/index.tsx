@@ -6,10 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../../components/ui/Text';
 import { ExamCard } from '../../../components/exam/ExamCard';
 import { SortButton } from '../../../components/exam/SortButton';
+import { TourHint } from '../../../components/tour/TourHint';
 import { colors, radii, spacing } from '../../../theme/tokens';
 import { useExamStore } from '../../../store/examStore';
 import { useClassStore } from '../../../store/classStore';
+import { useAuthStore } from '../../../store/authStore';
 import { useCanCreateExam } from '../../../hooks/useCanCreateExam';
+import { CALIBRATION_EXAM_CODE } from '../../../lib/mockData';
 
 type StatusGroup = 'pending' | 'done';
 
@@ -36,6 +39,8 @@ export default function Exams() {
   const [sortMode, setSortMode] = useState<SortMode>('dueDate');
   const [classPickerOpen, setClassPickerOpen] = useState(false);
   const { canCreate } = useCanCreateExam();
+  const calibrationTourStep = useAuthStore((s) => s.calibrationTourStep);
+  const skipCalibrationTour = useAuthStore((s) => s.skipCalibrationTour);
 
   const onAddExam = () => {
     router.push(canCreate ? '/exams/new' : '/exams/paywall');
@@ -135,14 +140,19 @@ export default function Exams() {
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, calibrationTourStep === 'card' && styles.listContentTourSpace]}
         renderItem={({ item }) => (
-          <ExamCard
-            exam={item}
-            progress={examProgress(item)}
-            rosterStudents={examRosterStudents(item)}
-            onPress={() => router.push(`/exams/${item.id}`)}
-          />
+          <View style={styles.cardWrap}>
+            <ExamCard
+              exam={item}
+              progress={examProgress(item)}
+              rosterStudents={examRosterStudents(item)}
+              onPress={() => router.push(`/exams/${item.id}`)}
+            />
+            {calibrationTourStep === 'card' && item.code === CALIBRATION_EXAM_CODE ? (
+              <TourHint text="Toque aqui para começar a calibração" onDismiss={skipCalibrationTour} />
+            ) : null}
+          </View>
         )}
         ListEmptyComponent={
           <Text variant="body" color={colors.textMuted} style={styles.empty}>
@@ -249,6 +259,15 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: spacing.lg,
     paddingBottom: 140,
+  },
+  // Gives the calibration TourHint's badge+bubble (which floats above the first card) room to
+  // render without being clipped by the FlatList's own top edge — there's nothing above the
+  // first item to push that edge down otherwise.
+  listContentTourSpace: {
+    paddingTop: 90,
+  },
+  cardWrap: {
+    position: 'relative',
   },
   empty: {
     textAlign: 'center',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { AuthFormLayout } from '../../components/auth/AuthFormLayout';
 import { AuthTextField } from '../../components/auth/AuthTextField';
@@ -42,6 +42,11 @@ export default function Login() {
         secureTextEntry
         placeholder="••••••••"
       />
+      <Pressable onPress={() => Linking.openURL('https://provazero.app.br/recuperar-senha')} hitSlop={8}>
+        <Text variant="caption" color={colors.textMuted} style={styles.forgotPassword}>
+          Esqueci minha senha
+        </Text>
+      </Pressable>
       {error ? (
         <Text variant="caption" color={colors.danger} style={styles.error}>
           {error}
@@ -56,6 +61,11 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
+  forgotPassword: {
+    textAlign: 'right',
+    textDecorationLine: 'underline',
+    marginBottom: spacing.md,
+  },
   error: {
     marginBottom: spacing.md,
   },

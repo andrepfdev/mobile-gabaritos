@@ -30,6 +30,7 @@
     "expo-status-bar": "~57.0.1",
     "hermes-compiler": "250829098.0.16",
     "jpeg-js": "^0.4.4",
+    "lottie-react-native": "~7.3.8",
     "omr-opencv": "file:modules/omr-opencv",
     "react": "19.2.3",
     "react-dom": "19.2.3",
