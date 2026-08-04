@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import LottieView from 'lottie-react-native';
+import LottieView, { AnimationObject } from 'lottie-react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../ui/Text';
 import { colors, radii, spacing } from '../../theme/tokens';
@@ -8,13 +8,18 @@ import { colors, radii, spacing } from '../../theme/tokens';
 export type TourHintProps = {
   text: string;
   onDismiss: () => void;
+  /** Lottie animation to show, e.g. `require('../../assets/animations/strong-pencil.json')` —
+   *  each call site picks its own so the same coachmark doesn't repeat itself across steps. */
+  animationSource: AnimationObject;
 };
 
 /** One-time coachmark overlaid on top of a real screen element (card/button) to guide the
  *  teacher through printing and scanning the calibration gabarito — see store/authStore.ts's
  *  `calibrationTourStep`. The parent must be `position: 'relative'` and wrap the target element;
- *  this component fills it and never intercepts taps on the target itself (`pointerEvents`). */
-export function TourHint({ text, onDismiss }: TourHintProps) {
+ *  this component fills it and never intercepts taps on the target itself (`pointerEvents`). Also
+ *  needs room above and below the wrapped element for the callout/skip button to not overlap
+ *  neighboring content — see the padding added around each call site. */
+export function TourHint({ text, onDismiss, animationSource }: TourHintProps) {
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.ring} pointerEvents="none" />
@@ -34,7 +39,7 @@ export function TourHint({ text, onDismiss }: TourHintProps) {
       </View>
 
       <View style={styles.centerWrap} pointerEvents="none">
-        <LottieView source={require('../../assets/animations/strong-pencil.json')} autoPlay loop style={styles.animation} />
+        <LottieView source={animationSource} autoPlay loop style={styles.animation} />
       </View>
 
       <View style={styles.skipRow}>
@@ -65,6 +70,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     borderWidth: 2,
     borderColor: colors.coral,
+    borderStyle: 'dashed',
   },
   callout: {
     position: 'absolute',

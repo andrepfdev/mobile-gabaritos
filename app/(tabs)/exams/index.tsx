@@ -150,7 +150,11 @@ export default function Exams() {
               onPress={() => router.push(`/exams/${item.id}`)}
             />
             {calibrationTourStep === 'card' && item.code === CALIBRATION_EXAM_CODE ? (
-              <TourHint text="Toque aqui para começar a calibração" onDismiss={skipCalibrationTour} />
+              <TourHint
+                text="Toque aqui para começar a calibração"
+                onDismiss={skipCalibrationTour}
+                animationSource={require('../../../assets/animations/strong-pencil.json')}
+              />
             ) : null}
           </View>
         )}

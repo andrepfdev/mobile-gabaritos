@@ -131,7 +131,9 @@ export default function ExamDetail() {
           />
         </Card>
 
-        <View style={styles.exportWrap}>
+        <View
+          style={[styles.exportWrap, isCalibration && calibrationTourStep === 'export' && styles.exportWrapTourSpace]}
+        >
           <Card variant="cream" style={styles.card}>
             <Text variant="h2" weight="bold">
               {isCalibration ? 'Exportar gabarito de calibração' : 'Exportar gabarito em branco'}
@@ -152,7 +154,11 @@ export default function ExamDetail() {
             />
           </Card>
           {isCalibration && calibrationTourStep === 'export' ? (
-            <TourHint text="Toque aqui para baixar e imprimir" onDismiss={skipCalibrationTour} />
+            <TourHint
+              text="Toque aqui para baixar e imprimir"
+              onDismiss={skipCalibrationTour}
+              animationSource={require('../../../../assets/animations/pencil-smart.json')}
+            />
           ) : null}
         </View>
 
@@ -204,6 +210,13 @@ const styles = StyleSheet.create({
   },
   exportWrap: {
     position: 'relative',
+  },
+  // Gives the calibration TourHint's callout (above) and skip button (below) room to render
+  // without overlapping the "Escanear gabarito" card above or the "Excluir prova" link below —
+  // the normal gaps here (just the card's own marginBottom) are too tight for both.
+  exportWrapTourSpace: {
+    marginTop: 74,
+    marginBottom: 56,
   },
   cardSubtitle: {
     marginTop: spacing.xs,
