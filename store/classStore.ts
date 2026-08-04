@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ensureMigrated } from '../lib/db/client';
+import { ensureMigrated, claimOrphanedRows } from '../lib/db/client';
 import { ClassRecord, listClasses, createClass, updateClass, softDeleteClass } from '../lib/db/classesRepository';
 import {
   StudentRecord,
@@ -48,6 +48,7 @@ export const useClassStore = create<ClassStore>((set, get) => ({
   hydrate: async (userId) => {
     try {
       await ensureMigrated();
+      claimOrphanedRows(userId);
       const [classes, students] = await Promise.all([listClasses(userId), listAllStudents(userId)]);
       set({ classes, students, hydrated: true, hydratedUserId: userId, hydrateError: null });
     } catch {

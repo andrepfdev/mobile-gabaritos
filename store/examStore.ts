@@ -3,7 +3,7 @@ import { getAll } from '../lib/localDb/repository';
 import { AnswerKey, Exam, STORAGE_KEYS } from '../lib/localDb/schema';
 import { mockAnswerKeys, mockExams } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
-import { ensureMigrated } from '../lib/db/client';
+import { ensureMigrated, claimOrphanedRows } from '../lib/db/client';
 import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
 import { ExamResultRecord, listAllExamResults, upsertExamResult } from '../lib/db/examResultsRepository';
@@ -94,6 +94,7 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   hydrate: async (userId) => {
     try {
       await ensureMigrated();
+      claimOrphanedRows(userId);
       await importFromAsyncStorageIfNeeded(userId);
 
       let exams = await listExams(userId);

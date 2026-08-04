@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f3eb13c6-1ee1-4439-9f3f-b73688cb99ba",
-  "prevId": "00000000-0000-0000-0000-000000000000",
+  "id": "b4068fb2-536d-433e-a291-0a86593cfd62",
+  "prevId": "f3eb13c6-1ee1-4439-9f3f-b73688cb99ba",
   "tables": {
     "answer_keys": {
       "name": "answer_keys",
@@ -12,6 +12,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "answers": {
@@ -29,7 +36,13 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "answer_keys_user_id_idx": {
+          "name": "answer_keys_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -43,6 +56,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "name": {
@@ -88,7 +108,13 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "classes_user_id_idx": {
+          "name": "classes_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -102,6 +128,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "title": {
@@ -170,13 +203,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "students": {
-          "name": "students",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "text",
@@ -199,7 +225,13 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "exams_user_id_idx": {
+          "name": "exams_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -213,6 +245,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "class_id": {
@@ -258,7 +297,18 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "students_user_id_idx": {
+          "name": "students_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        },
+        "students_class_id_idx": {
+          "name": "students_class_id_idx",
+          "columns": ["class_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -272,6 +322,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "exam_id": {
@@ -331,7 +388,23 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "exam_results_user_id_idx": {
+          "name": "exam_results_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        },
+        "exam_results_exam_id_idx": {
+          "name": "exam_results_exam_id_idx",
+          "columns": ["exam_id"],
+          "isUnique": false
+        },
+        "exam_results_student_id_idx": {
+          "name": "exam_results_student_id_idx",
+          "columns": ["student_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -345,6 +418,13 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "exam_id": {
@@ -362,7 +442,23 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "exam_classes_user_id_idx": {
+          "name": "exam_classes_user_id_idx",
+          "columns": ["user_id"],
+          "isUnique": false
+        },
+        "exam_classes_exam_id_idx": {
+          "name": "exam_classes_exam_id_idx",
+          "columns": ["exam_id"],
+          "isUnique": false
+        },
+        "exam_classes_class_id_idx": {
+          "name": "exam_classes_class_id_idx",
+          "columns": ["class_id"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

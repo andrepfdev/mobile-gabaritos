@@ -27,24 +27,29 @@ export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
 
   hydrate: async () => {
-    const [accessToken, onboardingSeen] = await Promise.all([
+    const [accessToken, onboardingSeen, storedUser] = await Promise.all([
       getAccessToken(),
       AsyncStorage.getItem(STORAGE_KEYS.onboardingSeen),
+      AsyncStorage.getItem(STORAGE_KEYS.currentUser),
     ]);
     set({
       isAuthenticated: !!accessToken,
+      user: accessToken && storedUser ? (JSON.parse(storedUser) as User) : null,
       hasSeenOnboarding: onboardingSeen === 'true',
       hydrated: true,
     });
   },
 
   login: async (tokens, user) => {
-    await setTokens(tokens.accessToken, tokens.refreshToken);
+    await Promise.all([
+      setTokens(tokens.accessToken, tokens.refreshToken),
+      AsyncStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(user)),
+    ]);
     set({ isAuthenticated: true, user });
   },
 
   logout: async () => {
-    await clearTokens();
+    await Promise.all([clearTokens(), AsyncStorage.removeItem(STORAGE_KEYS.currentUser)]);
     set({ isAuthenticated: false, user: null });
     useExamStore.getState().reset();
     useClassStore.getState().reset();
@@ -56,5 +61,8 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ hasSeenOnboarding: true });
   },
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => {
+    AsyncStorage.setItem(STORAGE_KEYS.currentUser, JSON.stringify(user)).catch(() => {});
+    set({ user });
+  },
 }));

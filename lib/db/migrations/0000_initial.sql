@@ -1,13 +1,11 @@
 CREATE TABLE `answer_keys` (
 	`exam_id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`answers` text NOT NULL,
 	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `classes` (
 	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`name` text NOT NULL,
 	`turma` text,
 	`subject` text,
@@ -18,7 +16,6 @@ CREATE TABLE `classes` (
 --> statement-breakpoint
 CREATE TABLE `exams` (
 	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`title` text NOT NULL,
 	`subject` text,
 	`class_name` text,
@@ -28,6 +25,7 @@ CREATE TABLE `exams` (
 	`priority` text DEFAULT 'none' NOT NULL,
 	`status` text DEFAULT 'to_correct' NOT NULL,
 	`code` text NOT NULL,
+	`students` text NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
 	`deleted_at` text
@@ -35,7 +33,6 @@ CREATE TABLE `exams` (
 --> statement-breakpoint
 CREATE TABLE `students` (
 	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`class_id` text NOT NULL,
 	`name` text NOT NULL,
 	`avatar_uri` text,
@@ -46,7 +43,6 @@ CREATE TABLE `students` (
 --> statement-breakpoint
 CREATE TABLE `exam_results` (
 	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`exam_id` text NOT NULL,
 	`student_id` text NOT NULL,
 	`answers` text NOT NULL,
@@ -59,29 +55,6 @@ CREATE TABLE `exam_results` (
 --> statement-breakpoint
 CREATE TABLE `exam_classes` (
 	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
 	`exam_id` text NOT NULL,
 	`class_id` text NOT NULL
 );
---> statement-breakpoint
-CREATE INDEX `answer_keys_user_id_idx` ON `answer_keys` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `classes_user_id_idx` ON `classes` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `exams_user_id_idx` ON `exams` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `students_user_id_idx` ON `students` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `students_class_id_idx` ON `students` (`class_id`);
---> statement-breakpoint
-CREATE INDEX `exam_results_user_id_idx` ON `exam_results` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `exam_results_exam_id_idx` ON `exam_results` (`exam_id`);
---> statement-breakpoint
-CREATE INDEX `exam_results_student_id_idx` ON `exam_results` (`student_id`);
---> statement-breakpoint
-CREATE INDEX `exam_classes_user_id_idx` ON `exam_classes` (`user_id`);
---> statement-breakpoint
-CREATE INDEX `exam_classes_exam_id_idx` ON `exam_classes` (`exam_id`);
---> statement-breakpoint
-CREATE INDEX `exam_classes_class_id_idx` ON `exam_classes` (`class_id`);
