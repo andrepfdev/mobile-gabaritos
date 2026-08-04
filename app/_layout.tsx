@@ -11,6 +11,7 @@ import { queryClient } from '../api/queryClient';
 import { setSessionExpiredHandler } from '../api/authInterceptor';
 import { useAuthStore } from '../store/authStore';
 import { useExamStore } from '../store/examStore';
+import { useClassStore } from '../store/classStore';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -21,14 +22,17 @@ export default function RootLayout() {
   const logout = useAuthStore((s) => s.logout);
   const hydrateExams = useExamStore((s) => s.hydrate);
   const examsHydrated = useExamStore((s) => s.hydrated);
+  const hydrateClasses = useClassStore((s) => s.hydrate);
+  const classesHydrated = useClassStore((s) => s.hydrated);
 
   useEffect(() => {
     hydrateAuth();
     hydrateExams();
+    hydrateClasses();
     setSessionExpiredHandler(() => logout());
-  }, [hydrateAuth, hydrateExams, logout]);
+  }, [hydrateAuth, hydrateExams, hydrateClasses, logout]);
 
-  const ready = fontsLoaded && authHydrated && examsHydrated;
+  const ready = fontsLoaded && authHydrated && examsHydrated && classesHydrated;
 
   useEffect(() => {
     if (ready) {

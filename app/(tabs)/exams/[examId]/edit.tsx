@@ -1,17 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Text } from '../../../components/ui/Text';
-import { AuthTextField } from '../../../components/auth/AuthTextField';
-import { PillButton } from '../../../components/ui/PillButton';
-import { colors, radii, spacing } from '../../../theme/tokens';
-import { useExamStore } from '../../../store/examStore';
-import { useClassStore } from '../../../store/classStore';
-import { useCanCreateExam } from '../../../hooks/useCanCreateExam';
-import { generateExamCode } from '../../../lib/gabarito/code';
+import { Text } from '../../../../components/ui/Text';
+import { AuthTextField } from '../../../../components/auth/AuthTextField';
+import { PillButton } from '../../../../components/ui/PillButton';
+import { colors, radii, spacing } from '../../../../theme/tokens';
+import { useExamStore } from '../../../../store/examStore';
+import { useClassStore } from '../../../../store/classStore';
 
 const MAX_QUESTIONS = 15;
 
@@ -28,32 +26,31 @@ function toIsoDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function generateExamId(): string {
-  return `exam-${Date.now()}`;
-}
-
-export default function NewExam() {
+export default function EditExam() {
+  const { examId } = useLocalSearchParams<{ examId: string }>();
   const router = useRouter();
-  const createExam = useExamStore((s) => s.createExam);
+  const exams = useExamStore((s) => s.exams);
+  const examClasses = useExamStore((s) => s.examClasses);
+  const examResults = useExamStore((s) => s.examResults);
+  const updateExam = useExamStore((s) => s.updateExam);
   const linkExamClasses = useExamStore((s) => s.linkExamClasses);
-  const examCount = useExamStore((s) => s.exams.length);
   const classes = useClassStore((s) => s.classes);
-  const { canCreate } = useCanCreateExam();
 
-  useEffect(() => {
-    if (!canCreate) {
-      router.replace('/exams/paywall');
-    }
-  }, [canCreate, router]);
+  const exam = exams.find((e) => e.id === examId);
+  const hasResults = examResults.some((r) => r.examId === examId);
+  const linkedClassIds = useMemo(
+    () => examClasses.filter((l) => l.examId === examId).map((l) => l.classId),
+    [examClasses, examId],
+  );
 
-  const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('');
-  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [title, setTitle] = useState(exam?.title ?? '');
+  const [subject, setSubject] = useState(exam?.subject ?? '');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>(linkedClassIds);
   const [classPickerOpen, setClassPickerOpen] = useState(false);
-  const [questionCount, setQuestionCount] = useState('10');
-  const [dueDate, setDueDate] = useState('');
+  const [questionCount, setQuestionCount] = useState(String(exam?.questionCount ?? 10));
+  const [dueDate, setDueDate] = useState(exam?.dueDate ?? '');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
+  const [optionsCount, setOptionsCount] = useState<4 | 5>(exam?.optionsCount ?? 5);
 
   const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
   const selectedClasses = classes.filter((c) => selectedClassIds.includes(c.id));
@@ -62,34 +59,38 @@ export default function NewExam() {
     setSelectedClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   };
 
+  if (!exam) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <Text variant="body" style={styles.content}>
+          Prova não encontrada.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
   const onSubmit = async () => {
     if (!title.trim() || !questionCount.trim()) return;
-    const id = generateExamId();
-    await createExam({
-      id,
+    await updateExam({
+      ...exam,
       title: title.trim(),
       subject: subject.trim() || undefined,
       className: selectedClasses.map((c) => c.turma || c.name).join(', ') || undefined,
-      questionCount: Math.min(MAX_QUESTIONS, Math.max(1, Number(questionCount) || 10)),
+      questionCount: hasResults
+        ? exam.questionCount
+        : Math.min(MAX_QUESTIONS, Math.max(1, Number(questionCount) || 10)),
       dueDate: dueDate.trim() || undefined,
-      createdAt: new Date().toISOString(),
-      priority: 'none',
-      status: 'to_correct',
-      students: [],
-      code: generateExamCode(subject.trim() || undefined, examCount + 1),
-      optionsCount,
+      optionsCount: hasResults ? exam.optionsCount : optionsCount,
     });
-    if (selectedClassIds.length > 0) {
-      await linkExamClasses(id, selectedClassIds);
-    }
-    router.replace(`/exams/${id}`);
+    await linkExamClasses(exam.id, selectedClassIds);
+    router.back();
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="h1" weight="bold" style={styles.title}>
-          Nova prova
+          Editar prova
         </Text>
         <AuthTextField label="Título" value={title} onChangeText={setTitle} placeholder="Avaliação de Matemática" />
         <AuthTextField label="Disciplina" value={subject} onChangeText={setSubject} placeholder="Matemática" />
@@ -108,6 +109,7 @@ export default function NewExam() {
           value={questionCount}
           onChangeText={setQuestionCount}
           keyboardType="number-pad"
+          editable={!hasResults}
           error={questionCountExceedsMax ? `Máximo de ${MAX_QUESTIONS} questões` : undefined}
         />
         <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.dateLabel}>
@@ -139,14 +141,22 @@ export default function NewExam() {
             title="A, B, C, D"
             variant={optionsCount === 4 ? 'accent' : 'outline'}
             onPress={() => setOptionsCount(4)}
+            disabled={hasResults}
           />
           <PillButton
             title="A, B, C, D, E"
             variant={optionsCount === 5 ? 'accent' : 'outline'}
             onPress={() => setOptionsCount(5)}
+            disabled={hasResults}
           />
         </View>
-        <PillButton title="Criar prova" onPress={onSubmit} />
+        {hasResults ? (
+          <Text variant="caption" color={colors.textMuted} style={styles.lockedHint}>
+            O número de questões e de alternativas não pode ser alterado porque essa prova já tem alunos
+            corrigidos.
+          </Text>
+        ) : null}
+        <PillButton title="Salvar alterações" onPress={onSubmit} />
       </ScrollView>
 
       <Modal visible={classPickerOpen} transparent animationType="fade" onRequestClose={() => setClassPickerOpen(false)}>
@@ -219,6 +229,9 @@ const styles = StyleSheet.create({
   optionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  lockedHint: {
     marginBottom: spacing.md,
   },
   modalOverlay: {

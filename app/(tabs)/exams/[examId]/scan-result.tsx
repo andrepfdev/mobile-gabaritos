@@ -10,6 +10,7 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { useClassStore } from '../../../../store/classStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { optionsForCount } from '../../../../lib/gabarito/layout';
 import { AMBIGUOUS_RATIO_THRESHOLD, scoreAgainstAnswerKey, unansweredRatio } from '../../../../lib/gabarito/scan';
@@ -26,17 +27,65 @@ function LegendItem({ color, borderColor, label }: { color: string; borderColor?
 }
 
 export default function ScanResult() {
-  const { examId } = useLocalSearchParams<{ examId: string }>();
+  const { examId, studentId } = useLocalSearchParams<{ examId: string; studentId?: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const examResults = useExamStore((s) => s.examResults);
+  const examClasses = useExamStore((s) => s.examClasses);
+  const saveExamResult = useExamStore((s) => s.saveExamResult);
   const result = useScanStore((s) => s.result);
+  const students = useClassStore((s) => s.students);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
+  const student = studentId ? students.find((s) => s.id === studentId) : undefined;
 
-  const onScanAgain = () => router.replace(`/exams/${examId}/scan`);
-  const onFinish = () => router.replace(`/exams/${examId}`);
+  const linkedClassIds = examClasses.filter((l) => l.examId === examId).map((l) => l.classId);
+  const rosterStudents = students
+    .filter((s) => linkedClassIds.includes(s.classId))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const nextPendingStudent = studentId
+    ? rosterStudents.find(
+        (s) => s.id !== studentId && !examResults.some((r) => r.examId === examId && r.studentId === s.id),
+      )
+    : undefined;
+
+  const onScanAgain = () =>
+    router.replace(studentId ? `/exams/${examId}/scan?studentId=${studentId}` : `/exams/${examId}/scan`);
+  const onFinish = async () => {
+    if (studentId) {
+      await saveExamResult({
+        examId,
+        studentId,
+        answers: answers as Record<number, string>,
+        correctCount,
+        wrongCount,
+        blankCount,
+        scorePercent,
+      });
+      router.replace(`/exams/${examId}/roster`);
+      return;
+    }
+    router.replace(`/exams/${examId}`);
+  };
+  const onFinishAndNext = async () => {
+    if (!studentId) return;
+    await saveExamResult({
+      examId,
+      studentId,
+      answers: answers as Record<number, string>,
+      correctCount,
+      wrongCount,
+      blankCount,
+      scorePercent,
+    });
+    if (nextPendingStudent) {
+      router.replace(`/exams/${examId}/scan?studentId=${nextPendingStudent.id}`);
+    } else {
+      router.replace(`/exams/${examId}/roster`);
+    }
+  };
 
   // The full analysis already runs during capture (scan.tsx), so by the time this screen
   // mounts the result is ready — no loading state, no re-analysis here.
@@ -62,7 +111,7 @@ export default function ScanResult() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text variant="h1" weight="bold" style={styles.title}>
-          Resultado
+          {student ? `Resultado — ${student.name}` : 'Resultado'}
         </Text>
 
         {isAmbiguous ? (
@@ -80,13 +129,31 @@ export default function ScanResult() {
 
         <View style={styles.scoreRow}>
           <StatCard variant="dark" value={`Nota ${scorePercent}`} label="Referência (base 100)" />
-          <Pressable
-            style={styles.rescanButton}
-            onPress={onScanAgain}
-            accessibilityLabel="Escanear outra"
-          >
-            <Ionicons name="scan-outline" size={28} color={colors.dark} />
-          </Pressable>
+          {nextPendingStudent ? (
+            <Pressable
+              style={[styles.rescanButton, styles.nextButton]}
+              onPress={onFinishAndNext}
+              accessibilityLabel={`Corrigir próximo: ${nextPendingStudent.name}`}
+            >
+              <Ionicons name="arrow-forward-circle" size={28} color={colors.white} />
+            </Pressable>
+          ) : studentId ? (
+            <Pressable
+              style={[styles.rescanButton, styles.nextButton]}
+              onPress={onFinish}
+              accessibilityLabel="Salvar e voltar para a lista de alunos"
+            >
+              <Ionicons name="checkmark-circle" size={28} color={colors.white} />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={styles.rescanButton}
+              onPress={onScanAgain}
+              accessibilityLabel="Escanear outra"
+            >
+              <Ionicons name="scan-outline" size={28} color={colors.dark} />
+            </Pressable>
+          )}
         </View>
 
         <ScrollView horizontal contentContainerStyle={styles.summaryRow}>
@@ -206,6 +273,10 @@ const styles = StyleSheet.create({
     borderColor: colors.dark,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  nextButton: {
+    backgroundColor: colors.coral,
+    borderWidth: 0,
   },
   summaryRow: {
     flexDirection: 'row',

@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
-import { colors, radii, shadow, spacing } from '../../theme/tokens';
+import { Text } from './Text';
+import { colors, radii, spacing } from '../../theme/tokens';
 
 export type TabItem = {
   key: string;
@@ -21,19 +22,22 @@ export function FloatingTabBar({ items }: FloatingTabBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
+  // Android's 3-button nav bar is a fixed 48dp (AOSP `navigation_bar_height`), but under
+  // edge-to-edge on some device/library combos `insets.bottom` under-reports it — flooring at
+  // 48 on Android keeps this bar's dark background reaching the real screen edge instead of
+  // leaving a gap where the light app background shows through behind the nav buttons.
+  const bottomInset = Platform.OS === 'android' ? Math.max(insets.bottom, 48) : insets.bottom;
 
   return (
-    <View style={[styles.wrapper, { bottom: insets.bottom + spacing.sm }]} pointerEvents="box-none">
-      <View style={styles.bar}>
-        {items.map((item) => (
-          <TabBarButton
-            key={item.key}
-            item={item}
-            active={pathname.startsWith(item.route)}
-            onPress={() => router.push(item.route as never)}
-          />
-        ))}
-      </View>
+    <View style={[styles.bar, { paddingBottom: bottomInset + spacing.xs }]}>
+      {items.map((item) => (
+        <TabBarButton
+          key={item.key}
+          item={item}
+          active={pathname.startsWith(item.route)}
+          onPress={() => router.push(item.route as never)}
+        />
+      ))}
     </View>
   );
 }
@@ -47,7 +51,7 @@ type TabBarButtonProps = {
 function TabBarButton({ item, active, onPress }: TabBarButtonProps) {
   const animatedIconWrapStyle = useAnimatedStyle(() => ({
     transform: [
-      { translateY: withSpring(active ? -14 : 0, { damping: 14, stiffness: 180 }) },
+      { translateY: withSpring(active ? -8 : 0, { damping: 14, stiffness: 180 }) },
       { scale: withSpring(active ? 1 : 0.9, { damping: 14, stiffness: 180 }) },
     ],
   }));
@@ -55,36 +59,44 @@ function TabBarButton({ item, active, onPress }: TabBarButtonProps) {
   return (
     <Pressable onPress={onPress} style={styles.item} hitSlop={8}>
       <Animated.View style={[styles.iconWrap, active && styles.iconWrapActive, animatedIconWrapStyle]}>
-        <Ionicons name={item.icon} size={20} color={colors.white} />
+        <Ionicons name={item.icon} size={24} color={colors.white} />
       </Animated.View>
-      <View style={[styles.dot, active && styles.dotActive]} />
+      <Text
+        variant="caption"
+        weight={active ? 'bold' : 'regular'}
+        color={active ? colors.coral : '#c9c9c9'}
+        style={styles.label}
+      >
+        {item.label}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
+  bar: {
     position: 'absolute',
     left: 0,
     right: 0,
-    alignItems: 'center',
-  },
-  bar: {
+    bottom: 0,
     flexDirection: 'row',
     backgroundColor: colors.dark,
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    ...shadow.card,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    shadowColor: '#000000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: -4 },
+    elevation: 8,
   },
   item: {
-    paddingHorizontal: spacing.sm,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconWrap: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -93,16 +105,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.coral,
     borderWidth: 3,
     borderColor: colors.white,
-    ...shadow.card,
+    shadowColor: '#000000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+  label: {
     marginTop: 4,
-    backgroundColor: 'transparent',
-  },
-  dotActive: {
-    backgroundColor: colors.coral,
   },
 });

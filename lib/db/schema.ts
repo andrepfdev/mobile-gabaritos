@@ -33,11 +33,11 @@ export const answerKeys = sqliteTable('answer_keys', {
   updatedAt: text('updated_at').notNull(),
 });
 
-// Not wired into any screen yet — created now so the roster-by-class feature (planned for later)
-// doesn't need its own database migration on top of this one.
 export const classes = sqliteTable('classes', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  turma: text('turma'),
+  subject: text('subject'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
@@ -51,4 +51,25 @@ export const students = sqliteTable('students', {
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
+});
+
+/** One row per (exam, student) — latest scan wins (upsert by id), no attempt history. */
+export const examResults = sqliteTable('exam_results', {
+  id: text('id').primaryKey(),
+  examId: text('exam_id').notNull(),
+  studentId: text('student_id').notNull(),
+  answers: text('answers', { mode: 'json' }).notNull().$type<Record<number, string>>(),
+  correctCount: integer('correct_count').notNull(),
+  wrongCount: integer('wrong_count').notNull(),
+  blankCount: integer('blank_count').notNull(),
+  scorePercent: integer('score_percent').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
+/** Which turmas a prova is applied to — N:N, since the same prova (same gabarito/QR) can be
+ *  applied to several turmas at once. */
+export const examClasses = sqliteTable('exam_classes', {
+  id: text('id').primaryKey(),
+  examId: text('exam_id').notNull(),
+  classId: text('class_id').notNull(),
 });

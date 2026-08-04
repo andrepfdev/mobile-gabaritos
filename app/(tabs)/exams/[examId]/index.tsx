@@ -1,7 +1,8 @@
 import React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
@@ -14,11 +15,13 @@ export default function ExamDetail() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const examClasses = useExamStore((s) => s.examClasses);
   const deleteExam = useExamStore((s) => s.deleteExam);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
   const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const linkedClassCount = exam ? examClasses.filter((l) => l.examId === exam.id).length : 0;
 
   if (!exam) {
     return (
@@ -51,9 +54,16 @@ export default function ExamDetail() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="h1" weight="bold" style={styles.title}>
-          {exam.title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text variant="h1" weight="bold" style={styles.title}>
+            {exam.title}
+          </Text>
+          {!isCalibration ? (
+            <Pressable onPress={() => router.push(`/exams/${examId}/edit`)} style={styles.editButton} hitSlop={8}>
+              <Ionicons name="brush" size={20} color={colors.textPrimary} />
+            </Pressable>
+          ) : null}
+        </View>
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
           {[exam.subject, exam.className].filter(Boolean).join(' — ')}
         </Text>
@@ -90,17 +100,21 @@ export default function ExamDetail() {
 
         <Card variant="accent" style={styles.card}>
           <Text variant="h2" weight="bold" color={colors.white}>
-            Escanear gabarito
+            {linkedClassCount > 1 ? 'Corrigir turmas' : linkedClassCount === 1 ? 'Corrigir turma' : 'Escanear gabarito'}
           </Text>
           <Text variant="body" color={colors.white} style={styles.cardSubtitle}>
             {isCalibration
               ? 'Escaneie a folha de calibração impressa para testar se a câmera do seu celular lê bem as marcações.'
-              : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
+              : linkedClassCount > 0
+                ? 'Veja a lista de alunos e corrija um por um.'
+                : 'Aponte a câmera para uma folha preenchida e receba a nota na hora.'}
           </Text>
           <PillButton
-            title="Escanear"
+            title={linkedClassCount > 0 ? 'Ver alunos' : 'Escanear'}
             variant="dark"
-            onPress={() => router.push(`/exams/${examId}/scan`)}
+            onPress={() =>
+              router.push(linkedClassCount > 0 ? `/exams/${examId}/roster` : `/exams/${examId}/scan`)
+            }
             disabled={!answerKey}
           />
         </Card>
@@ -141,14 +155,29 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: 140,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
   title: {
+    flex: 1,
     marginBottom: spacing.xs,
+    marginRight: spacing.sm,
   },
   subtitle: {
     marginBottom: spacing.xs,
   },
   code: {
     marginBottom: spacing.md,
+  },
+  editButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.grayLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     marginBottom: spacing.md,

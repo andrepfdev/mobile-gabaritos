@@ -6,6 +6,8 @@ import { generateExamCode } from '../lib/gabarito/code';
 import { ensureMigrated } from '../lib/db/client';
 import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
+import { ExamResultRecord, listAllExamResults, upsertExamResult } from '../lib/db/examResultsRepository';
+import { ExamClassLink, listExamClassLinks, setExamClasses } from '../lib/db/examClassesRepository';
 
 /** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved. */
 function backfillExam(exam: Exam, sequence: number): Exam {
@@ -51,12 +53,16 @@ type ExamStore = {
    *  plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
   totalExamCount: number;
   answerKeys: AnswerKey[];
+  examResults: ExamResultRecord[];
+  examClasses: ExamClassLink[];
 
   hydrate: () => Promise<void>;
   createExam: (exam: Exam) => Promise<void>;
   updateExam: (exam: Exam) => Promise<void>;
   deleteExam: (examId: string) => Promise<void>;
   saveAnswerKey: (answerKey: AnswerKey) => Promise<void>;
+  saveExamResult: (result: ExamResultRecord) => Promise<void>;
+  linkExamClasses: (examId: string, classIds: string[]) => Promise<void>;
 
   getAnswerKey: (examId: string) => AnswerKey | undefined;
 };
@@ -66,6 +72,8 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   exams: [],
   totalExamCount: 0,
   answerKeys: [],
+  examResults: [],
+  examClasses: [],
 
   hydrate: async () => {
     await ensureMigrated();
@@ -85,7 +93,10 @@ export const useExamStore = create<ExamStore>((set, get) => ({
       answerKeys = await listAnswerKeys();
     }
 
-    set({ exams, answerKeys, totalExamCount: await countAllExams(), hydrated: true });
+    const examResults = await listAllExamResults();
+    const examClasses = await listExamClassLinks();
+
+    set({ exams, answerKeys, examResults, examClasses, totalExamCount: await countAllExams(), hydrated: true });
   },
 
   createExam: async (exam) => {
@@ -106,6 +117,16 @@ export const useExamStore = create<ExamStore>((set, get) => ({
   saveAnswerKey: async (answerKey) => {
     await upsertAnswerKey(answerKey);
     set({ answerKeys: await listAnswerKeys() });
+  },
+
+  saveExamResult: async (result) => {
+    await upsertExamResult(result);
+    set({ examResults: await listAllExamResults() });
+  },
+
+  linkExamClasses: async (examId, classIds) => {
+    await setExamClasses(examId, classIds);
+    set({ examClasses: await listExamClassLinks() });
   },
 
   getAnswerKey: (examId) => get().answerKeys.find((key) => key.examId === examId),
