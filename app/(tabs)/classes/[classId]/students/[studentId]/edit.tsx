@@ -91,7 +91,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: colors.grayLight,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     marginBottom: spacing.md,
     flexDirection: 'row',
     paddingHorizontal: spacing.sm,
