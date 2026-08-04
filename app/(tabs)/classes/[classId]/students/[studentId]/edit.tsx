@@ -57,7 +57,7 @@ export default function EditStudent() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable onPress={() => router.back()} style={styles.backButton} hitSlop={8}>
-          <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+          <Ionicons name="arrow-back-circle-outline" size={20} color={colors.textPrimary} />
           <Text variant="body" weight="medium" color={colors.textPrimary} style={styles.backText}>
             Voltar
           </Text>
