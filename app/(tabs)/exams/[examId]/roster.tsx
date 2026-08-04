@@ -97,9 +97,14 @@ export default function ExamRoster() {
 
         {studentsByClass.map(({ classRecord, students: classStudents }) => (
           <View key={classRecord.id} style={styles.classSection}>
-            <Text variant="h2" weight="bold" style={styles.classHeader}>
+            <Text variant="h2" weight="bold" style={styles.classHeaderTitle}>
               {classRecord.turma || classRecord.name}
             </Text>
+            {classRecord.turma ? (
+              <Text variant="caption" color={colors.textMuted} style={styles.classHeaderSubtitle}>
+                {classRecord.name}
+              </Text>
+            ) : null}
             {classStudents.length > 0 ? (
               <Card variant="light" style={styles.studentsCard} padded={false}>
                 {classStudents.map((student, index) =>
@@ -149,7 +154,10 @@ const styles = StyleSheet.create({
   classSection: {
     marginBottom: spacing.lg,
   },
-  classHeader: {
+  classHeaderTitle: {
+    marginBottom: 2,
+  },
+  classHeaderSubtitle: {
     marginBottom: spacing.sm,
   },
   studentsCard: {
