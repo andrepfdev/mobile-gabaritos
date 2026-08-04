@@ -63,6 +63,14 @@ export default function ExamDetail() {
           {`Código: ${exam.code}`}
         </Text>
 
+        {!isCalibration ? (
+          <Pressable onPress={() => router.push(`/exams/${examId}/edit`)} style={styles.editButton} hitSlop={8}>
+            <Text variant="body" weight="medium" color={colors.textPrimary}>
+              Editar prova
+            </Text>
+          </Pressable>
+        ) : null}
+
         {!answerKey ? (
           <Card variant="dark" style={styles.card}>
             <Text variant="h2" weight="bold" color={colors.white}>
@@ -154,6 +162,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   code: {
+    marginBottom: spacing.md,
+  },
+  editButton: {
+    alignSelf: 'flex-start',
     marginBottom: spacing.md,
   },
   card: {
