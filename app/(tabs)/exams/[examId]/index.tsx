@@ -1,7 +1,8 @@
 import React from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
@@ -53,23 +54,22 @@ export default function ExamDetail() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="h1" weight="bold" style={styles.title}>
-          {exam.title}
-        </Text>
+        <View style={styles.titleRow}>
+          <Text variant="h1" weight="bold" style={styles.title}>
+            {exam.title}
+          </Text>
+          {!isCalibration ? (
+            <Pressable onPress={() => router.push(`/exams/${examId}/edit`)} style={styles.editButton} hitSlop={8}>
+              <Ionicons name="brush" size={20} color={colors.textPrimary} />
+            </Pressable>
+          ) : null}
+        </View>
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
           {[exam.subject, exam.className].filter(Boolean).join(' — ')}
         </Text>
         <Text variant="caption" weight="medium" color={colors.coral} style={styles.code}>
           {`Código: ${exam.code}`}
         </Text>
-
-        {!isCalibration ? (
-          <Pressable onPress={() => router.push(`/exams/${examId}/edit`)} style={styles.editButton} hitSlop={8}>
-            <Text variant="body" weight="medium" color={colors.textPrimary}>
-              Editar prova
-            </Text>
-          </Pressable>
-        ) : null}
 
         {!answerKey ? (
           <Card variant="dark" style={styles.card}>
@@ -155,8 +155,15 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: 140,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
   title: {
+    flex: 1,
     marginBottom: spacing.xs,
+    marginRight: spacing.sm,
   },
   subtitle: {
     marginBottom: spacing.xs,
@@ -165,8 +172,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   editButton: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.md,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.grayLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   card: {
     marginBottom: spacing.md,

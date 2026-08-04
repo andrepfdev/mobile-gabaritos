@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -43,27 +43,14 @@ export default function EditExam() {
     [examClasses, examId],
   );
 
-  const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('');
-  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [title, setTitle] = useState(exam?.title ?? '');
+  const [subject, setSubject] = useState(exam?.subject ?? '');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>(linkedClassIds);
   const [classPickerOpen, setClassPickerOpen] = useState(false);
-  const [questionCount, setQuestionCount] = useState('10');
-  const [dueDate, setDueDate] = useState('');
+  const [questionCount, setQuestionCount] = useState(String(exam?.questionCount ?? 10));
+  const [dueDate, setDueDate] = useState(exam?.dueDate ?? '');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    if (exam && !loaded) {
-      setTitle(exam.title);
-      setSubject(exam.subject ?? '');
-      setQuestionCount(String(exam.questionCount));
-      setDueDate(exam.dueDate ?? '');
-      setOptionsCount(exam.optionsCount);
-      setSelectedClassIds(linkedClassIds);
-      setLoaded(true);
-    }
-  }, [exam, linkedClassIds, loaded]);
+  const [optionsCount, setOptionsCount] = useState<4 | 5>(exam?.optionsCount ?? 5);
 
   const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
   const selectedClasses = classes.filter((c) => selectedClassIds.includes(c.id));
