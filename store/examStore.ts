@@ -27,9 +27,9 @@ function backfillExam(exam: Exam, sequence: number): Exam {
  * SQLite `exams` table is still empty — after the first successful import, SQLite is the source
  * of truth and this is skipped.
  */
-async function importFromAsyncStorageIfNeeded(): Promise<void> {
+async function importFromAsyncStorageIfNeeded(userId: string): Promise<void> {
   const [existingExams, oldExams, oldAnswerKeys] = await Promise.all([
-    listExams(),
+    listExams(userId),
     getAll<Exam>(STORAGE_KEYS.exams),
     getAll<AnswerKey>(STORAGE_KEYS.answerKeys),
   ]);
@@ -39,24 +39,30 @@ async function importFromAsyncStorageIfNeeded(): Promise<void> {
   let sequence = 0;
   for (const exam of oldExams) {
     sequence += 1;
-    await upsertExam(backfillExam(exam, sequence));
+    await upsertExam(backfillExam(exam, sequence), userId);
   }
   for (const answerKey of oldAnswerKeys) {
-    await upsertAnswerKey(answerKey);
+    await upsertAnswerKey(answerKey, userId);
   }
 }
 
 type ExamStore = {
   hydrated: boolean;
+  /** userId this store's data was hydrated for — guards mutations from running before hydrate()
+   *  and lets reset()/hydrate() detect an account switch. */
+  hydratedUserId: string | null;
   exams: Exam[];
-  /** Count of all exams ever created, including soft-deleted ones — used to enforce the free
-   *  plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
+  /** Count of all exams ever created by this user, including soft-deleted ones — used to enforce
+   *  the free plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
   totalExamCount: number;
   answerKeys: AnswerKey[];
   examResults: ExamResultRecord[];
   examClasses: ExamClassLink[];
 
-  hydrate: () => Promise<void>;
+  hydrate: (userId: string) => Promise<void>;
+  /** Clears in-memory state on logout — SQLite rows stay put, scoped by userId, ready for the next
+   *  hydrate() when someone logs back in. */
+  reset: () => void;
   createExam: (exam: Exam) => Promise<void>;
   updateExam: (exam: Exam) => Promise<void>;
   deleteExam: (examId: string) => Promise<void>;
@@ -67,66 +73,90 @@ type ExamStore = {
   getAnswerKey: (examId: string) => AnswerKey | undefined;
 };
 
-export const useExamStore = create<ExamStore>((set, get) => ({
+const initialState = {
   hydrated: false,
-  exams: [],
+  hydratedUserId: null as string | null,
+  exams: [] as Exam[],
   totalExamCount: 0,
-  answerKeys: [],
-  examResults: [],
-  examClasses: [],
+  answerKeys: [] as AnswerKey[],
+  examResults: [] as ExamResultRecord[],
+  examClasses: [] as ExamClassLink[],
+};
 
-  hydrate: async () => {
+export const useExamStore = create<ExamStore>((set, get) => ({
+  ...initialState,
+
+  hydrate: async (userId) => {
     await ensureMigrated();
-    await importFromAsyncStorageIfNeeded();
+    await importFromAsyncStorageIfNeeded(userId);
 
-    let exams = await listExams();
-    let answerKeys = await listAnswerKeys();
+    let exams = await listExams(userId);
+    let answerKeys = await listAnswerKeys(userId);
 
     if (exams.length === 0) {
+      // ids are namespaced per user: exams.id is a global PK, and the mock data uses fixed ids
+      // (e.g. CALIBRATION_EXAM_ID) that would otherwise collide — and silently reassign
+      // ownership — across different accounts sharing this device.
       for (const exam of mockExams) {
-        await upsertExam(exam);
+        await upsertExam({ ...exam, id: `${userId}:${exam.id}` }, userId);
       }
       for (const answerKey of mockAnswerKeys) {
-        await upsertAnswerKey(answerKey);
+        await upsertAnswerKey({ ...answerKey, examId: `${userId}:${answerKey.examId}` }, userId);
       }
-      exams = await listExams();
-      answerKeys = await listAnswerKeys();
+      exams = await listExams(userId);
+      answerKeys = await listAnswerKeys(userId);
     }
 
-    const examResults = await listAllExamResults();
-    const examClasses = await listExamClassLinks();
+    const examResults = await listAllExamResults(userId);
+    const examClasses = await listExamClassLinks(userId);
 
-    set({ exams, answerKeys, examResults, examClasses, totalExamCount: await countAllExams(), hydrated: true });
+    set({
+      exams,
+      answerKeys,
+      examResults,
+      examClasses,
+      totalExamCount: await countAllExams(userId),
+      hydrated: true,
+      hydratedUserId: userId,
+    });
   },
 
+  reset: () => set({ ...initialState }),
+
   createExam: async (exam) => {
-    await upsertExam(exam);
-    set({ exams: await listExams(), totalExamCount: await countAllExams() });
+    const userId = get().hydratedUserId!;
+    await upsertExam(exam, userId);
+    set({ exams: await listExams(userId), totalExamCount: await countAllExams(userId) });
   },
 
   updateExam: async (exam) => {
-    await upsertExam(exam);
-    set({ exams: await listExams() });
+    const userId = get().hydratedUserId!;
+    await upsertExam(exam, userId);
+    set({ exams: await listExams(userId) });
   },
 
   deleteExam: async (examId) => {
+    const userId = get().hydratedUserId!;
     await softDeleteExam(examId);
-    set({ exams: await listExams(), totalExamCount: await countAllExams() });
+    set({ exams: await listExams(userId), totalExamCount: await countAllExams(userId) });
   },
 
   saveAnswerKey: async (answerKey) => {
-    await upsertAnswerKey(answerKey);
-    set({ answerKeys: await listAnswerKeys() });
+    const userId = get().hydratedUserId!;
+    await upsertAnswerKey(answerKey, userId);
+    set({ answerKeys: await listAnswerKeys(userId) });
   },
 
   saveExamResult: async (result) => {
-    await upsertExamResult(result);
-    set({ examResults: await listAllExamResults() });
+    const userId = get().hydratedUserId!;
+    await upsertExamResult(result, userId);
+    set({ examResults: await listAllExamResults(userId) });
   },
 
   linkExamClasses: async (examId, classIds) => {
-    await setExamClasses(examId, classIds);
-    set({ examClasses: await listExamClassLinks() });
+    const userId = get().hydratedUserId!;
+    await setExamClasses(examId, classIds, userId);
+    set({ examClasses: await listExamClassLinks(userId) });
   },
 
   getAnswerKey: (examId) => get().answerKeys.find((key) => key.examId === examId),

@@ -1,11 +1,13 @@
 CREATE TABLE `answer_keys` (
 	`exam_id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`answers` text NOT NULL,
 	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `classes` (
 	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`name` text NOT NULL,
 	`turma` text,
 	`subject` text,
@@ -16,6 +18,7 @@ CREATE TABLE `classes` (
 --> statement-breakpoint
 CREATE TABLE `exams` (
 	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`title` text NOT NULL,
 	`subject` text,
 	`class_name` text,
@@ -33,6 +36,7 @@ CREATE TABLE `exams` (
 --> statement-breakpoint
 CREATE TABLE `students` (
 	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`class_id` text NOT NULL,
 	`name` text NOT NULL,
 	`avatar_uri` text,
@@ -43,6 +47,7 @@ CREATE TABLE `students` (
 --> statement-breakpoint
 CREATE TABLE `exam_results` (
 	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`exam_id` text NOT NULL,
 	`student_id` text NOT NULL,
 	`answers` text NOT NULL,
@@ -55,6 +60,7 @@ CREATE TABLE `exam_results` (
 --> statement-breakpoint
 CREATE TABLE `exam_classes` (
 	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
 	`exam_id` text NOT NULL,
 	`class_id` text NOT NULL
 );

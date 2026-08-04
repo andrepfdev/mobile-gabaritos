@@ -11,7 +11,7 @@ import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
-import { CALIBRATION_EXAM_ID } from '../../../../lib/mockData';
+import { CALIBRATION_EXAM_CODE } from '../../../../lib/mockData';
 
 // Rendered well above screen resolution so the exported image stays sharp when printed at full
 // size — the preview below shows it scaled down to fit the screen, but capture() always grabs
@@ -23,7 +23,7 @@ export default function ExportGabarito() {
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
   const exam = exams.find((e) => e.id === examId);
-  const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const isCalibration = exam?.code === CALIBRATION_EXAM_CODE;
   const answerKey = isCalibration ? answerKeys.find((k) => k.examId === examId)?.answers : undefined;
   const viewShotRef = useRef<React.ElementRef<typeof ViewShot>>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);

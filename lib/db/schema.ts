@@ -9,6 +9,7 @@ import type { ExamPriority, ExamStatus } from '../localDb/schema';
 
 export const exams = sqliteTable('exams', {
   id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   title: text('title').notNull(),
   subject: text('subject'),
   className: text('class_name'),
@@ -29,12 +30,14 @@ export const exams = sqliteTable('exams', {
 
 export const answerKeys = sqliteTable('answer_keys', {
   examId: text('exam_id').primaryKey(),
+  userId: text('user_id').notNull(),
   answers: text('answers', { mode: 'json' }).notNull().$type<Record<number, string>>(),
   updatedAt: text('updated_at').notNull(),
 });
 
 export const classes = sqliteTable('classes', {
   id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   name: text('name').notNull(),
   turma: text('turma'),
   subject: text('subject'),
@@ -45,6 +48,7 @@ export const classes = sqliteTable('classes', {
 
 export const students = sqliteTable('students', {
   id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   classId: text('class_id').notNull(),
   name: text('name').notNull(),
   avatarUri: text('avatar_uri'),
@@ -56,6 +60,7 @@ export const students = sqliteTable('students', {
 /** One row per (exam, student) — latest scan wins (upsert by id), no attempt history. */
 export const examResults = sqliteTable('exam_results', {
   id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   examId: text('exam_id').notNull(),
   studentId: text('student_id').notNull(),
   answers: text('answers', { mode: 'json' }).notNull().$type<Record<number, string>>(),
@@ -70,6 +75,7 @@ export const examResults = sqliteTable('exam_results', {
  *  applied to several turmas at once. */
 export const examClasses = sqliteTable('exam_classes', {
   id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
   examId: text('exam_id').notNull(),
   classId: text('class_id').notNull(),
 });

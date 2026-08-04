@@ -8,7 +8,7 @@ import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
-import { CALIBRATION_EXAM_ID } from '../../../../lib/mockData';
+import { CALIBRATION_EXAM_CODE } from '../../../../lib/mockData';
 
 export default function ExamDetail() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -20,7 +20,7 @@ export default function ExamDetail() {
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
-  const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const isCalibration = exam?.code === CALIBRATION_EXAM_CODE;
   const linkedClassCount = exam ? examClasses.filter((l) => l.examId === exam.id).length : 0;
 
   if (!exam) {

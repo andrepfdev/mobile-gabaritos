@@ -20,19 +20,25 @@ export default function RootLayout() {
   const hydrateAuth = useAuthStore((s) => s.hydrate);
   const authHydrated = useAuthStore((s) => s.hydrated);
   const logout = useAuthStore((s) => s.logout);
+  const userId = useAuthStore((s) => s.user?.id);
   const hydrateExams = useExamStore((s) => s.hydrate);
-  const examsHydrated = useExamStore((s) => s.hydrated);
+  const examsHydratedUserId = useExamStore((s) => s.hydratedUserId);
   const hydrateClasses = useClassStore((s) => s.hydrate);
-  const classesHydrated = useClassStore((s) => s.hydrated);
+  const classesHydratedUserId = useClassStore((s) => s.hydratedUserId);
 
   useEffect(() => {
     hydrateAuth();
-    hydrateExams();
-    hydrateClasses();
     setSessionExpiredHandler(() => logout());
-  }, [hydrateAuth, hydrateExams, hydrateClasses, logout]);
+  }, [hydrateAuth, logout]);
 
-  const ready = fontsLoaded && authHydrated && examsHydrated && classesHydrated;
+  useEffect(() => {
+    if (!userId) return;
+    hydrateExams(userId);
+    hydrateClasses(userId);
+  }, [userId, hydrateExams, hydrateClasses]);
+
+  const ready =
+    fontsLoaded && authHydrated && (!userId || (examsHydratedUserId === userId && classesHydratedUserId === userId));
 
   useEffect(() => {
     if (ready) {

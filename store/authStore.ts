@@ -3,6 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { clearTokens, getAccessToken, setTokens } from '../api/tokenStorage';
 import { STORAGE_KEYS } from '../lib/localDb/schema';
 import { User } from '../api/types';
+import { queryClient } from '../api/queryClient';
+import { useExamStore } from './examStore';
+import { useClassStore } from './classStore';
 
 type AuthStore = {
   hydrated: boolean;
@@ -43,6 +46,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
   logout: async () => {
     await clearTokens();
     set({ isAuthenticated: false, user: null });
+    useExamStore.getState().reset();
+    useClassStore.getState().reset();
+    queryClient.clear();
   },
 
   markOnboardingSeen: async () => {
