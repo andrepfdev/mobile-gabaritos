@@ -12,7 +12,7 @@ export type ExamCardProps = {
   exam: Exam;
   progress?: number; // 0-1, omitted/ignored when status is 'waiting'
   onPress?: () => void;
-  /** Overrides exam.students (legacy, always empty) with the real roster of the linked turma. */
+  /** Real roster of the linked turma (via exam_classes -> students). */
   rosterStudents?: { id: string; name: string; avatarUri?: string }[];
 };
 
@@ -23,7 +23,7 @@ function formatDueDate(dueDate?: string) {
 }
 
 export function ExamCard({ exam, progress = 0, onPress, rosterStudents }: ExamCardProps) {
-  const avatars: Avatar[] = (rosterStudents ?? exam.students).map((s) => ({
+  const avatars: Avatar[] = (rosterStudents ?? []).map((s) => ({
     uri: s.avatarUri,
     initials: s.name.slice(0, 2).toUpperCase(),
   }));

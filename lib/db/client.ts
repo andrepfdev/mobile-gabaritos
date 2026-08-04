@@ -9,8 +9,15 @@ export const db = drizzle(sqlite, { schema });
 
 let migratedPromise: Promise<void> | undefined;
 
-/** Applies any pending Drizzle migrations, once per app run. */
+/** Applies any pending Drizzle migrations, once per app run. If migration fails, the cached
+ *  promise is dropped so the next call (e.g. a user-triggered retry) attempts again instead of
+ *  replaying the same rejection forever. */
 export function ensureMigrated(): Promise<void> {
-  migratedPromise ??= migrate(db, migrations);
+  if (!migratedPromise) {
+    migratedPromise = migrate(db, migrations).catch((err) => {
+      migratedPromise = undefined;
+      throw err;
+    });
+  }
   return migratedPromise;
 }

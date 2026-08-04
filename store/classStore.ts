@@ -16,6 +16,10 @@ type ClassStore = {
   hydratedUserId: string | null;
   classes: ClassRecord[];
   students: StudentRecord[];
+  /** Set when hydrate() fails (e.g. local database couldn't open/migrate) — lets the UI show a
+   *  retry screen instead of leaving the splash screen up forever. User-facing text only, no
+   *  technical detail (see AGENTS.md). */
+  hydrateError: string | null;
 
   hydrate: (userId: string) => Promise<void>;
   /** Clears in-memory state on logout — SQLite rows stay put, scoped by userId, ready for the next
@@ -35,15 +39,20 @@ const initialState = {
   hydratedUserId: null as string | null,
   classes: [] as ClassRecord[],
   students: [] as StudentRecord[],
+  hydrateError: null as string | null,
 };
 
 export const useClassStore = create<ClassStore>((set, get) => ({
   ...initialState,
 
   hydrate: async (userId) => {
-    await ensureMigrated();
-    const [classes, students] = await Promise.all([listClasses(userId), listAllStudents(userId)]);
-    set({ classes, students, hydrated: true, hydratedUserId: userId });
+    try {
+      await ensureMigrated();
+      const [classes, students] = await Promise.all([listClasses(userId), listAllStudents(userId)]);
+      set({ classes, students, hydrated: true, hydratedUserId: userId, hydrateError: null });
+    } catch {
+      set({ hydrateError: 'Não foi possível carregar suas turmas. Verifique o espaço livre no aparelho e tente novamente.' });
+    }
   },
 
   reset: () => set({ ...initialState }),

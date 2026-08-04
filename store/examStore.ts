@@ -58,6 +58,10 @@ type ExamStore = {
   answerKeys: AnswerKey[];
   examResults: ExamResultRecord[];
   examClasses: ExamClassLink[];
+  /** Set when hydrate() fails (e.g. local database couldn't open/migrate) — lets the UI show a
+   *  retry screen instead of leaving the splash screen up forever. User-facing text only, no
+   *  technical detail (see AGENTS.md). */
+  hydrateError: string | null;
 
   hydrate: (userId: string) => Promise<void>;
   /** Clears in-memory state on logout — SQLite rows stay put, scoped by userId, ready for the next
@@ -81,44 +85,50 @@ const initialState = {
   answerKeys: [] as AnswerKey[],
   examResults: [] as ExamResultRecord[],
   examClasses: [] as ExamClassLink[],
+  hydrateError: null as string | null,
 };
 
 export const useExamStore = create<ExamStore>((set, get) => ({
   ...initialState,
 
   hydrate: async (userId) => {
-    await ensureMigrated();
-    await importFromAsyncStorageIfNeeded(userId);
+    try {
+      await ensureMigrated();
+      await importFromAsyncStorageIfNeeded(userId);
 
-    let exams = await listExams(userId);
-    let answerKeys = await listAnswerKeys(userId);
+      let exams = await listExams(userId);
+      let answerKeys = await listAnswerKeys(userId);
 
-    if (exams.length === 0) {
-      // ids are namespaced per user: exams.id is a global PK, and the mock data uses fixed ids
-      // (e.g. CALIBRATION_EXAM_ID) that would otherwise collide — and silently reassign
-      // ownership — across different accounts sharing this device.
-      for (const exam of mockExams) {
-        await upsertExam({ ...exam, id: `${userId}:${exam.id}` }, userId);
+      if (exams.length === 0) {
+        // ids are namespaced per user: exams.id is a global PK, and the mock data uses fixed ids
+        // (e.g. CALIBRATION_EXAM_ID) that would otherwise collide — and silently reassign
+        // ownership — across different accounts sharing this device.
+        for (const exam of mockExams) {
+          await upsertExam({ ...exam, id: `${userId}:${exam.id}` }, userId);
+        }
+        for (const answerKey of mockAnswerKeys) {
+          await upsertAnswerKey({ ...answerKey, examId: `${userId}:${answerKey.examId}` }, userId);
+        }
+        exams = await listExams(userId);
+        answerKeys = await listAnswerKeys(userId);
       }
-      for (const answerKey of mockAnswerKeys) {
-        await upsertAnswerKey({ ...answerKey, examId: `${userId}:${answerKey.examId}` }, userId);
-      }
-      exams = await listExams(userId);
-      answerKeys = await listAnswerKeys(userId);
+
+      const examResults = await listAllExamResults(userId);
+      const examClasses = await listExamClassLinks(userId);
+
+      set({
+        exams,
+        answerKeys,
+        examResults,
+        examClasses,
+        totalExamCount: await countAllExams(userId),
+        hydrated: true,
+        hydratedUserId: userId,
+        hydrateError: null,
+      });
+    } catch {
+      set({ hydrateError: 'Não foi possível carregar suas provas. Verifique o espaço livre no aparelho e tente novamente.' });
     }
-
-    const examResults = await listAllExamResults(userId);
-    const examClasses = await listExamClassLinks(userId);
-
-    set({
-      exams,
-      answerKeys,
-      examResults,
-      examClasses,
-      totalExamCount: await countAllExams(userId),
-      hydrated: true,
-      hydratedUserId: userId,
-    });
   },
 
   reset: () => set({ ...initialState }),

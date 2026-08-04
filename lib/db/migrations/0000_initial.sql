@@ -28,7 +28,6 @@ CREATE TABLE `exams` (
 	`priority` text DEFAULT 'none' NOT NULL,
 	`status` text DEFAULT 'to_correct' NOT NULL,
 	`code` text NOT NULL,
-	`students` text NOT NULL,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL,
 	`deleted_at` text
@@ -64,3 +63,25 @@ CREATE TABLE `exam_classes` (
 	`exam_id` text NOT NULL,
 	`class_id` text NOT NULL
 );
+--> statement-breakpoint
+CREATE INDEX `answer_keys_user_id_idx` ON `answer_keys` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `classes_user_id_idx` ON `classes` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `exams_user_id_idx` ON `exams` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `students_user_id_idx` ON `students` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `students_class_id_idx` ON `students` (`class_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_results_user_id_idx` ON `exam_results` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_results_exam_id_idx` ON `exam_results` (`exam_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_results_student_id_idx` ON `exam_results` (`student_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_classes_user_id_idx` ON `exam_classes` (`user_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_classes_exam_id_idx` ON `exam_classes` (`exam_id`);
+--> statement-breakpoint
+CREATE INDEX `exam_classes_class_id_idx` ON `exam_classes` (`class_id`);

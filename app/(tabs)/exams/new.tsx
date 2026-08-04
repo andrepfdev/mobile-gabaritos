@@ -75,7 +75,6 @@ export default function NewExam() {
       createdAt: new Date().toISOString(),
       priority: 'none',
       status: 'to_correct',
-      students: [],
       code: generateExamCode(subject.trim() || undefined, examCount + 1),
       optionsCount,
     });

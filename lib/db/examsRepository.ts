@@ -20,7 +20,6 @@ function toExam(row: typeof examsTable.$inferSelect): Exam {
     createdAt: row.createdAt,
     priority: row.priority,
     status: row.status,
-    students: row.students,
     code: row.code,
   };
 }
@@ -57,7 +56,6 @@ export async function upsertExam(exam: Exam, userId: string): Promise<void> {
     priority: exam.priority,
     status: exam.status,
     code: exam.code,
-    students: exam.students,
   };
 
   await db

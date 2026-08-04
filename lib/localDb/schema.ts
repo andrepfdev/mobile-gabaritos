@@ -11,7 +11,6 @@ export type Exam = {
   createdAt: string; // ISO date-time
   priority: ExamPriority;
   status: ExamStatus;
-  students: { id: string; name: string; avatarUri?: string }[];
   /** Short human-readable code shown on the printed gabarito (e.g. "MAT006") so the teacher can visually confirm the sheet belongs to this exam. */
   code: string;
   /** Number of alternatives per question on the gabarito: A-D or A-E. */

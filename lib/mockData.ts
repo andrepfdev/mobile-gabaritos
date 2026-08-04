@@ -46,7 +46,6 @@ export const mockExams: Exam[] = [
     createdAt: '2026-07-01T10:00:00.000Z',
     priority: 'none',
     status: 'waiting',
-    students: [],
   },
 ];
 
