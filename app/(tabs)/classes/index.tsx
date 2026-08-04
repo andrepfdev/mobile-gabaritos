@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: 140,
+    paddingBottom: 200,
   },
   card: {
     marginBottom: spacing.md,
