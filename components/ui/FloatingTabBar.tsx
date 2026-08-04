@@ -76,8 +76,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     flexDirection: 'row',
     backgroundColor: colors.dark,
-    borderTopLeftRadius: radii.lg,
-    borderTopRightRadius: radii.lg,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.xs,
     shadowColor: '#000000',
