@@ -129,13 +129,31 @@ export default function ScanResult() {
 
         <View style={styles.scoreRow}>
           <StatCard variant="dark" value={`Nota ${scorePercent}`} label="Referência (base 100)" />
-          <Pressable
-            style={styles.rescanButton}
-            onPress={onScanAgain}
-            accessibilityLabel="Escanear outra"
-          >
-            <Ionicons name="scan-outline" size={28} color={colors.dark} />
-          </Pressable>
+          {nextPendingStudent ? (
+            <Pressable
+              style={[styles.rescanButton, styles.nextButton]}
+              onPress={onFinishAndNext}
+              accessibilityLabel={`Corrigir próximo: ${nextPendingStudent.name}`}
+            >
+              <Ionicons name="arrow-forward-circle" size={28} color={colors.white} />
+            </Pressable>
+          ) : studentId ? (
+            <Pressable
+              style={[styles.rescanButton, styles.nextButton]}
+              onPress={onFinish}
+              accessibilityLabel="Salvar e voltar para a lista de alunos"
+            >
+              <Ionicons name="checkmark-circle" size={28} color={colors.white} />
+            </Pressable>
+          ) : (
+            <Pressable
+              style={styles.rescanButton}
+              onPress={onScanAgain}
+              accessibilityLabel="Escanear outra"
+            >
+              <Ionicons name="scan-outline" size={28} color={colors.dark} />
+            </Pressable>
+          )}
         </View>
 
         <ScrollView horizontal contentContainerStyle={styles.summaryRow}>
@@ -162,14 +180,7 @@ export default function ScanResult() {
         />
 
         <PillButton title="Escanear outra" variant="outline" onPress={onScanAgain} />
-        {nextPendingStudent ? (
-          <PillButton
-            title={`Corrigir próximo: ${nextPendingStudent.name}`}
-            variant="accent"
-            onPress={onFinishAndNext}
-          />
-        ) : null}
-        <PillButton title="Concluir" variant={nextPendingStudent ? 'outline' : 'accent'} onPress={onFinish} />
+        <PillButton title="Concluir" variant="accent" onPress={onFinish} />
 
         {/* TEMPORARY diagnostic block — remove once the pixel-reading pipeline is confirmed
             working end-to-end on a real device. Shows raw luminance readings (0=black..255=white)
@@ -262,6 +273,10 @@ const styles = StyleSheet.create({
     borderColor: colors.dark,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  nextButton: {
+    backgroundColor: colors.coral,
+    borderWidth: 0,
   },
   summaryRow: {
     flexDirection: 'row',

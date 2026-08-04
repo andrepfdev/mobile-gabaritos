@@ -45,10 +45,20 @@ export default function Exams() {
     [exams],
   );
 
+  const examRosterStudents = (exam: (typeof exams)[number]) =>
+    exam.classId ? classStudents.filter((student) => student.classId === exam.classId) : undefined;
+
+  // Turmas vinculadas: "corrigida" quando todo aluno da turma já tem nota lançada. Provas
+  // avulsas (sem turma) não têm nenhum jeito de marcar status hoje, então ficam sempre pendentes.
+  const isExamDone = (exam: (typeof exams)[number]) => {
+    const roster = examRosterStudents(exam);
+    if (!roster || roster.length === 0) return false;
+    const corrected = examResults.filter((result) => result.examId === exam.id).length;
+    return corrected >= roster.length;
+  };
+
   const filtered = useMemo(() => {
-    const byStatus = exams.filter((exam) =>
-      activeTab === 'done' ? exam.status === 'review' : exam.status !== 'review',
-    );
+    const byStatus = exams.filter((exam) => (activeTab === 'done' ? isExamDone(exam) : !isExamDone(exam)));
     const byClass = selectedClassName
       ? byStatus.filter((exam) => exam.className === selectedClassName)
       : byStatus;
@@ -61,14 +71,12 @@ export default function Exams() {
       return b.createdAt.localeCompare(a.createdAt);
     });
     return sorted;
-  }, [exams, activeTab, selectedClassName, sortMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exams, examResults, classStudents, activeTab, selectedClassName, sortMode]);
 
   const toggleSortMode = () => {
     setSortMode((prev) => (prev === 'dueDate' ? 'recent' : 'dueDate'));
   };
-
-  const examRosterStudents = (exam: (typeof exams)[number]) =>
-    exam.classId ? classStudents.filter((student) => student.classId === exam.classId) : undefined;
 
   const examProgress = (exam: (typeof exams)[number]) => {
     const roster = examRosterStudents(exam);
