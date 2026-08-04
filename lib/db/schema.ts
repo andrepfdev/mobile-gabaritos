@@ -33,11 +33,11 @@ export const answerKeys = sqliteTable('answer_keys', {
   updatedAt: text('updated_at').notNull(),
 });
 
-// Not wired into any screen yet — created now so the roster-by-class feature (planned for later)
-// doesn't need its own database migration on top of this one.
 export const classes = sqliteTable('classes', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  turma: text('turma'),
+  subject: text('subject'),
   createdAt: text('created_at').notNull(),
   updatedAt: text('updated_at').notNull(),
   deletedAt: text('deleted_at'),
