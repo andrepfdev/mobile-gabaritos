@@ -31,6 +31,7 @@ export default function ScanResult() {
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
+  const examResults = useExamStore((s) => s.examResults);
   const saveExamResult = useExamStore((s) => s.saveExamResult);
   const result = useScanStore((s) => s.result);
   const students = useClassStore((s) => s.students);
@@ -38,6 +39,17 @@ export default function ScanResult() {
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
   const student = studentId ? students.find((s) => s.id === studentId) : undefined;
+
+  const rosterStudents = exam?.classId
+    ? students
+        .filter((s) => s.classId === exam.classId)
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    : [];
+  const nextPendingStudent = studentId
+    ? rosterStudents.find(
+        (s) => s.id !== studentId && !examResults.some((r) => r.examId === examId && r.studentId === s.id),
+      )
+    : undefined;
 
   const onScanAgain = () =>
     router.replace(studentId ? `/exams/${examId}/scan?studentId=${studentId}` : `/exams/${examId}/scan`);
@@ -56,6 +68,23 @@ export default function ScanResult() {
       return;
     }
     router.replace(`/exams/${examId}`);
+  };
+  const onFinishAndNext = async () => {
+    if (!studentId) return;
+    await saveExamResult({
+      examId,
+      studentId,
+      answers: answers as Record<number, string>,
+      correctCount,
+      wrongCount,
+      blankCount,
+      scorePercent,
+    });
+    if (nextPendingStudent) {
+      router.replace(`/exams/${examId}/scan?studentId=${nextPendingStudent.id}`);
+    } else {
+      router.replace(`/exams/${examId}/roster`);
+    }
   };
 
   // The full analysis already runs during capture (scan.tsx), so by the time this screen
@@ -133,7 +162,14 @@ export default function ScanResult() {
         />
 
         <PillButton title="Escanear outra" variant="outline" onPress={onScanAgain} />
-        <PillButton title="Concluir" variant="accent" onPress={onFinish} />
+        {nextPendingStudent ? (
+          <PillButton
+            title={`Corrigir próximo: ${nextPendingStudent.name}`}
+            variant="accent"
+            onPress={onFinishAndNext}
+          />
+        ) : null}
+        <PillButton title="Concluir" variant={nextPendingStudent ? 'outline' : 'accent'} onPress={onFinish} />
 
         {/* TEMPORARY diagnostic block — remove once the pixel-reading pipeline is confirmed
             working end-to-end on a real device. Shows raw luminance readings (0=black..255=white)
