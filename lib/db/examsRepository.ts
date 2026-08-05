@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import { db } from './client';
 import {
   exams as examsTable,
@@ -7,6 +7,7 @@ import {
   examClasses as examClassesTable,
 } from './schema';
 import type { Exam } from '../localDb/schema';
+import { CALIBRATION_EXAM_CODE } from '../mockData';
 
 function toExam(row: typeof examsTable.$inferSelect): Exam {
   return {
@@ -32,13 +33,15 @@ export async function listExams(userId: string): Promise<Exam[]> {
   return rows.map(toExam);
 }
 
-/** Counts every exam row of this user, including soft-deleted ones — used to enforce the free plan
- *  limit so it can't be bypassed by deleting and recreating exams. */
+/** Counts every exam row of this user, including soft-deleted ones but excluding the seeded
+ *  calibration exam — used to enforce the free plan limit so it can't be bypassed by deleting and
+ *  recreating exams. The calibration exam doesn't count against the limit (see
+ *  hooks/useCanCreateExam.ts). */
 export async function countAllExams(userId: string): Promise<number> {
   const result = await db
     .select({ count: sql<number>`count(*)` })
     .from(examsTable)
-    .where(eq(examsTable.userId, userId));
+    .where(and(eq(examsTable.userId, userId), ne(examsTable.code, CALIBRATION_EXAM_CODE)));
   return result[0]?.count ?? 0;
 }
 
