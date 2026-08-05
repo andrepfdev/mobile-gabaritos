@@ -18,7 +18,10 @@ export type ExamCardProps = {
 
 function formatDueDate(dueDate?: string) {
   if (!dueDate) return undefined;
-  const date = new Date(dueDate);
+  // `dueDate` é "YYYY-MM-DD". `new Date(dueDate)` sozinho é interpretado como meia-noite UTC, o
+  // que exibe o dia anterior em fusos atrás de UTC (ex.: America/Fortaleza) — força meia-noite
+  // local, mesmo truque usado por `parseIsoDate` em new.tsx/edit.tsx.
+  const date = new Date(`${dueDate}T00:00:00`);
   return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 

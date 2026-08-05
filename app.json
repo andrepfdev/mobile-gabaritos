@@ -71,7 +71,7 @@
       "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiBaseUrl": "https://api-gabaritos.vercel.app",
+      "apiBaseUrl": "https://api.provazero.app.br",
       "router": {},
       "eas": {
         "projectId": "3be962d1-d62c-4479-b7c5-7fee3fde9d26"

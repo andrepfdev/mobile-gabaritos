@@ -42,6 +42,7 @@ export const mockExams: Exam[] = [
     code: 'CAL000',
     optionsCount: 5,
     questionCount: 10,
+    // Preenchido dinamicamente no seed (store/examStore.ts), como "data da conta + 60 dias".
     dueDate: undefined,
     createdAt: '2026-07-01T10:00:00.000Z',
     priority: 'none',

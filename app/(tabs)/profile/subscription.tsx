@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, Linking, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Text } from '../../../components/ui/Text';
 import { Card } from '../../../components/ui/Card';
@@ -8,6 +8,8 @@ import { StatusTag } from '../../../components/ui/StatusTag';
 import { colors, spacing } from '../../../theme/tokens';
 import { useCancelSubscription, useSubscription } from '../../../api/subscriptions';
 import { usePayments } from '../../../api/payments';
+
+const SUBSCRIPTION_URL = 'https://provazero.app.br/login';
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pagamento pendente',
@@ -106,9 +108,20 @@ export default function SubscriptionScreen() {
                 ) : null}
               </Card>
             ) : (
-              <Card variant="grayLight" style={styles.card}>
+              <Card variant="light" style={styles.card}>
                 <Text variant="body">Nenhuma assinatura ativa.</Text>
-                {/* Compliance: no pricing/CTA to subscribe here — subscribing happens on the web. */}
+                {/* Compliance: no pricing/plan name/"subscribe" CTA here — subscribing happens on
+                    the web. A bare link out (no checkout, no price) is the allowed exception, see
+                    AGENTS.md and components/subscription/NoActiveSubscriptionCard.tsx. */}
+                <Pressable
+                  onPress={() => Linking.openURL(SUBSCRIPTION_URL)}
+                  hitSlop={8}
+                  style={styles.subscribeLink}
+                >
+                  <Text variant="body" weight="medium" color={colors.coral} style={styles.subscribeLinkText}>
+                    Gerenciar assinatura
+                  </Text>
+                </Pressable>
               </Card>
             )}
 
@@ -151,6 +164,12 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.lg,
+  },
+  subscribeLink: {
+    marginTop: spacing.sm,
+  },
+  subscribeLinkText: {
+    textDecorationLine: 'underline',
   },
   statusRow: {
     flexDirection: 'row',

@@ -1,6 +1,6 @@
 # ProvaZero
 
-App mobile para correção de gabaritos escolares. A marcação de respostas e o cálculo de resultados rodam 100% localmente no dispositivo; a API remota ([api-gabaritos](https://api-gabaritos.vercel.app)) cuida apenas de cadastro/login e assinatura de planos.
+App mobile para correção de gabaritos escolares. A marcação de respostas e o cálculo de resultados rodam 100% localmente no dispositivo; a API remota ([api.provazero.app.br](https://api.provazero.app.br)) cuida apenas de cadastro/login e assinatura de planos.
 
 ## Stack
 
@@ -38,11 +38,61 @@ Isso abre o Metro Bundler com um QR code no terminal. Opções:
 
 Na primeira execução o app faz o seeding de 3 provas de exemplo (armazenadas localmente) para já haver dado para visualizar nas telas de Estatísticas e Provas.
 
+### Emulador Android via terminal (sem abrir o Android Studio)
+
+Útil quando não dá pra usar a GUI do Android Studio (ex.: sessão remota/CI) ou
+só pra automatizar. Pressupõe um AVD já criado (Android Studio → Device
+Manager, uma vez só).
+
+```bash
+export ANDROID_HOME=~/Android/Sdk   # ajuste para o caminho real do seu SDK
+export PATH=$PATH:$ANDROID_HOME/platform-tools
+
+# 1. Listar os AVDs disponíveis (o nome exato é o que vai em -avd, não o
+#    nome "bonito" mostrado no Device Manager)
+$ANDROID_HOME/emulator/emulator -list-avds
+
+# 2. Subir o emulador em background
+nohup $ANDROID_HOME/emulator/emulator -avd <nome-do-avd> -no-snapshot -no-boot-anim \
+  > /tmp/emulator.log 2>&1 &
+
+# 3. Esperar o dispositivo aparecer no adb...
+adb wait-for-device
+
+# 4. ...e o boot terminar de fato (adb devices já mostra o device antes do
+#    Android estar realmente pronto para instalar/abrir apps)
+adb shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 2; done'
+
+# 5. Build nativo + instalação + abertura do app (ver aviso no início deste
+#    README sobre Expo Go não servir para o módulo omr-opencv)
+npx expo run:android
+```
+
+Comandos úteis pra inspecionar/depurar o emulador já rodando:
+
+```bash
+adb devices                                   # lista dispositivos/emuladores conectados
+adb shell screencap -p /sdcard/screen.png &&  \
+  adb pull /sdcard/screen.png ./screen.png    # screenshot
+adb shell input tap <x> <y>                   # toque (coordenadas em pixels reais do device,
+                                               # não os pixels "lógicos" de um screenshot redimensionado)
+adb shell input text "texto sem espaço"       # espaços em input text quebram — use %s no lugar
+adb shell input keyevent 4                    # botão "voltar" do Android
+```
+
+Primeira vez tocando em qualquer campo de texto, o emulador pode abrir um
+popup do sistema "Try out your stylus" por cima do teclado, atrapalhando
+input automatizado. Desativa de vez com:
+
+```bash
+adb shell settings put secure stylus_handwriting_enabled 0
+```
+
 ## Testando o fluxo do app
 
 ### Onboarding e autenticação
 1. Na primeira abertura, o app mostra o onboarding (4 slides) — arraste para o lado e toque em "Próximo"/"Começar".
-2. Você cai na tela de login. A API (`https://api-gabaritos.vercel.app`) já está no ar — crie uma conta em "Cadastre-se" (nome, e-mail, senha com 8+ caracteres) ou entre com uma conta existente.
+2. Você cai na tela de login. A API (`https://api.provazero.app.br`) já está no ar — crie uma conta em "Cadastre-se" (nome, e-mail, senha com 8+ caracteres) ou entre com uma conta existente.
 3. Login bem-sucedido leva à aba **Estatísticas**.
 
 ### Estatísticas e Provas
@@ -147,6 +197,30 @@ Notas:
   feche outros programas antes.
 - `./gradlew --stop` encerra o Gradle Daemon caso ele fique consumindo CPU/RAM
   depois que o comando já terminou (ou foi interrompido no meio).
+
+### Scripts de release (Android e iOS)
+
+Scripts prontos que limpam caches nativos problemáticos (o `gradlew clean`
+padrão quebra o ciclo CMake/codegen) e geram o artefato final:
+
+| Script | Plataforma | O que faz |
+|--------|------------|-----------|
+| [`scripts/android-release.ps1`](scripts/android-release.ps1) | Windows | Remove `android/app/.cxx`, `app/build`, `build`; roda `gradlew.bat assembleRelease` |
+| [`scripts/android-release.sh`](scripts/android-release.sh) | Linux/macOS | Equivalente ao `.ps1` acima, via `gradlew` |
+| [`scripts/ios-release.sh`](scripts/ios-release.sh) | macOS | `pod install` (se necessário) → limpa `ios/build` → `xcodebuild archive` → exporta `.ipa` se existir `ios/ExportOptions.plist` |
+
+```bash
+npm run android:apk      # Windows (PowerShell)
+npm run android:apk:sh   # Linux/macOS
+npm run ios:release      # macOS — exige Xcode instalado
+```
+
+Saída:
+- Android: `android/app/build/outputs/apk/release/app-release.apk`
+- iOS: `ios/build/ProvaZero.xcarchive` (e `ios/build/*.ipa` se o export estiver
+  configurado). Sem `ios/ExportOptions.plist` (method + `teamID`), o script
+  para no archive assinado e avisa como gerar o `.ipa` — não há assinatura
+  automática configurada no projeto ainda.
 - Para build de produção assinado, use `assembleRelease` (exige keystore
   configurado) ou o EAS Build (`npx eas build --platform android`), que roda
   na nuvem e não consome recursos da máquina local.
