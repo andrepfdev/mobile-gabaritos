@@ -66,6 +66,8 @@
     "lint": "eslint . --ext .ts,.tsx",
     "omr:oracle": "node tools/omr-oracle/test-pipeline.mjs",
     "android:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/android-release.ps1",
+    "android:apk:sh": "bash ./scripts/android-release.sh",
+    "ios:release": "bash ./scripts/ios-release.sh",
     "postinstall": "patch-package"
   },
   "private": true,

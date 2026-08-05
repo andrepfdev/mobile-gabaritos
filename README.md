@@ -147,6 +147,30 @@ Notas:
   feche outros programas antes.
 - `./gradlew --stop` encerra o Gradle Daemon caso ele fique consumindo CPU/RAM
   depois que o comando já terminou (ou foi interrompido no meio).
+
+### Scripts de release (Android e iOS)
+
+Scripts prontos que limpam caches nativos problemáticos (o `gradlew clean`
+padrão quebra o ciclo CMake/codegen) e geram o artefato final:
+
+| Script | Plataforma | O que faz |
+|--------|------------|-----------|
+| [`scripts/android-release.ps1`](scripts/android-release.ps1) | Windows | Remove `android/app/.cxx`, `app/build`, `build`; roda `gradlew.bat assembleRelease` |
+| [`scripts/android-release.sh`](scripts/android-release.sh) | Linux/macOS | Equivalente ao `.ps1` acima, via `gradlew` |
+| [`scripts/ios-release.sh`](scripts/ios-release.sh) | macOS | `pod install` (se necessário) → limpa `ios/build` → `xcodebuild archive` → exporta `.ipa` se existir `ios/ExportOptions.plist` |
+
+```bash
+npm run android:apk      # Windows (PowerShell)
+npm run android:apk:sh   # Linux/macOS
+npm run ios:release      # macOS — exige Xcode instalado
+```
+
+Saída:
+- Android: `android/app/build/outputs/apk/release/app-release.apk`
+- iOS: `ios/build/ProvaZero.xcarchive` (e `ios/build/*.ipa` se o export estiver
+  configurado). Sem `ios/ExportOptions.plist` (method + `teamID`), o script
+  para no archive assinado e avisa como gerar o `.ipa` — não há assinatura
+  automática configurada no projeto ainda.
 - Para build de produção assinado, use `assembleRelease` (exige keystore
   configurado) ou o EAS Build (`npx eas build --platform android`), que roda
   na nuvem e não consome recursos da máquina local.
