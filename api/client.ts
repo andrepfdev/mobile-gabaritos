@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { getAccessToken } from './tokenStorage';
 
-const BASE_URL = (Constants.expoConfig?.extra?.apiBaseUrl as string) ?? 'https://api-gabaritos.vercel.app';
+const BASE_URL = (Constants.expoConfig?.extra?.apiBaseUrl as string) ?? 'https://api.provazero.app.br';
 
 export type ApiError = {
   status: number;

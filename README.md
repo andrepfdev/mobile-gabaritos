@@ -1,6 +1,6 @@
 # ProvaZero
 
-App mobile para correção de gabaritos escolares. A marcação de respostas e o cálculo de resultados rodam 100% localmente no dispositivo; a API remota ([api-gabaritos](https://api-gabaritos.vercel.app)) cuida apenas de cadastro/login e assinatura de planos.
+App mobile para correção de gabaritos escolares. A marcação de respostas e o cálculo de resultados rodam 100% localmente no dispositivo; a API remota ([api.provazero.app.br](https://api.provazero.app.br)) cuida apenas de cadastro/login e assinatura de planos.
 
 ## Stack
 
@@ -42,7 +42,7 @@ Na primeira execução o app faz o seeding de 3 provas de exemplo (armazenadas l
 
 ### Onboarding e autenticação
 1. Na primeira abertura, o app mostra o onboarding (4 slides) — arraste para o lado e toque em "Próximo"/"Começar".
-2. Você cai na tela de login. A API (`https://api-gabaritos.vercel.app`) já está no ar — crie uma conta em "Cadastre-se" (nome, e-mail, senha com 8+ caracteres) ou entre com uma conta existente.
+2. Você cai na tela de login. A API (`https://api.provazero.app.br`) já está no ar — crie uma conta em "Cadastre-se" (nome, e-mail, senha com 8+ caracteres) ou entre com uma conta existente.
 3. Login bem-sucedido leva à aba **Estatísticas**.
 
 ### Estatísticas e Provas
