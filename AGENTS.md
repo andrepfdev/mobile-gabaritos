@@ -32,11 +32,18 @@ Regras a manter ao mexer em qualquer tela/fluxo de assinatura
   `react-native-iap`, RevenueCat, Stripe Checkout embutido, etc.). A única
   mutação permitida sobre assinatura é cancelamento (`useCancelSubscription`),
   que é uma ação de leitura/gestão, não de venda.
-- **Nunca** exibir preço, nome comercial de plano com valor, botão
-  "Assinar"/"Comprar"/"Fazer upgrade", ou link para a landing page de vendas
-  dentro do app. O texto ao usuário sem assinatura ativa deve se limitar a
-  constatar o status e oferecer "Verificar Assinatura" (refetch), como em
-  `NoActiveSubscriptionCard`.
+- **Nunca** exibir preço, nome comercial de plano com valor, ou botão
+  "Assinar"/"Comprar"/"Fazer upgrade" dentro do app. O texto ao usuário sem
+  assinatura ativa deve se limitar a constatar o status e oferecer
+  "Verificar Assinatura" (refetch), como em `NoActiveSubscriptionCard`.
+  **Exceção permitida**: um link de texto simples (sem preço, sem nome de
+  plano, sem palavras tipo "Assinar"/"Comprar") apontando pra
+  `https://provazero.app.br/login` — é o padrão "Reader App" aceito por
+  Apple/Google (só leva pra fora, não vende nada dentro do app). Hoje esse
+  link aparece em `NoActiveSubscriptionCard` (usado por
+  `subscription-locked.tsx` e `exams/paywall.tsx`) e no card "Nenhuma
+  assinatura ativa" de `profile/subscription.tsx`. Continua proibido
+  qualquer checkout embutido, preço ou botão de compra — só o link puro.
 - Criar conta (nome/e-mail/senha) *dentro* do app é permitido — a restrição
   das lojas é sobre o fluxo de **pagamento**, não sobre cadastro. O funil
   freemium (`FREE_EXAM_LIMIT` em `hooks/useCanCreateExam.ts`) pode continuar

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Linking, Pressable, StyleSheet } from 'react-native';
 import { Text } from '../ui/Text';
 import { Card } from '../ui/Card';
 import { PillButton } from '../ui/PillButton';
@@ -11,12 +11,18 @@ export type NoActiveSubscriptionCardProps = {
   verifying?: boolean;
 };
 
+const SUBSCRIPTION_URL = 'https://provazero.app.br/login';
+
 /**
- * Compliance-critical: this card must never show a price, a "buy"/"subscribe" button, or an
- * external link to a sales page. Subscribing happens entirely on the web, outside the app —
- * showing any of that in-app risks App Store Guideline 3.1.1 / Google Play Payments Policy
- * rejection. Keep the copy neutral and limited to "check status" only; any other action
- * (logout, back) belongs outside this card, rendered by the screen that uses it.
+ * Compliance-critical: this card must never show a price, a plan name with a value, or a
+ * "buy"/"subscribe"/"upgrade" button — subscribing happens entirely on the web, outside the app,
+ * and any of that in-app risks App Store Guideline 3.1.1 / Google Play Payments Policy rejection.
+ * The one exception is the plain text link below: a bare link out to the website (no checkout
+ * embedded, no price, no purchase-flavored copy, no URL spelled out in the label — generic
+ * "Gerenciar assinatura" wording) is the standard "Reader App" pattern both stores accept — it's
+ * just pointing somewhere else, not selling anything here. Keep everything else in this card
+ * limited to "check status" only; any other action (logout, back) belongs outside this card,
+ * rendered by the screen that uses it.
  */
 export function NoActiveSubscriptionCard({
   title = 'Assinatura não encontrada',
@@ -38,6 +44,11 @@ export function NoActiveSubscriptionCard({
         onPress={onVerify}
         disabled={verifying}
       />
+      <Pressable onPress={() => Linking.openURL(SUBSCRIPTION_URL)} hitSlop={8} style={styles.link}>
+        <Text variant="body" weight="medium" color={colors.coral} style={styles.linkText}>
+          Gerenciar assinatura
+        </Text>
+      </Pressable>
     </Card>
   );
 }
@@ -49,5 +60,12 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: spacing.sm,
     marginBottom: spacing.md,
+  },
+  link: {
+    marginTop: spacing.md,
+    alignSelf: 'center',
+  },
+  linkText: {
+    textDecorationLine: 'underline',
   },
 });
