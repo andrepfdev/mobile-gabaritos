@@ -11,6 +11,8 @@ import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useAuthStore } from '../../../../store/authStore';
 import { CALIBRATION_EXAM_CODE } from '../../../../lib/mockData';
+import { useSubscriptionStatus } from '../../../../hooks/useSubscriptionStatus';
+import { isExamPastDue } from '../../../../lib/exam/deadline';
 
 export default function ExamDetail() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -22,10 +24,14 @@ export default function ExamDetail() {
   const calibrationTourStep = useAuthStore((s) => s.calibrationTourStep);
   const advanceCalibrationTour = useAuthStore((s) => s.advanceCalibrationTour);
   const skipCalibrationTour = useAuthStore((s) => s.skipCalibrationTour);
+  const { hasActiveSubscription } = useSubscriptionStatus();
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
   const isCalibration = exam?.code === CALIBRATION_EXAM_CODE;
+  // Prazo vencido trava configurar/editar o gabarito só para contas sem assinatura ativa — é uma
+  // medida anti-abuso do plano gratuito, não uma limitação do produto.
+  const examLocked = !!exam && isExamPastDue(exam) && !hasActiveSubscription;
   const linkedClassCount = exam ? examClasses.filter((l) => l.examId === exam.id).length : 0;
 
   useEffect(() => {
@@ -89,12 +95,15 @@ export default function ExamDetail() {
               Configure o gabarito
             </Text>
             <Text variant="body" color="#c9c9c9" style={styles.cardSubtitle}>
-              Defina as respostas corretas antes de exportar ou corrigir provas.
+              {examLocked
+                ? 'O prazo dessa prova já passou, por isso não é mais possível configurar o gabarito.'
+                : 'Defina as respostas corretas antes de exportar ou corrigir provas.'}
             </Text>
             <PillButton
               title="Configurar gabarito"
               variant="light"
               onPress={() => router.push(`/exams/${examId}/answer-key`)}
+              disabled={examLocked}
             />
           </Card>
         ) : (
@@ -102,10 +111,16 @@ export default function ExamDetail() {
             <Text variant="body" weight="medium">
               Gabarito configurado ({exam.questionCount} questões)
             </Text>
+            {examLocked ? (
+              <Text variant="caption" color={colors.textMuted} style={styles.cardSubtitle}>
+                Prazo encerrado — o gabarito não pode mais ser alterado.
+              </Text>
+            ) : null}
             <PillButton
               title="Editar gabarito"
               variant="outline"
               onPress={() => router.push(`/exams/${examId}/answer-key`)}
+              disabled={examLocked}
             />
           </Card>
         )}

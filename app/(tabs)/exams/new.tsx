@@ -54,16 +54,21 @@ export default function NewExam() {
   const [dueDate, setDueDate] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [optionsCount, setOptionsCount] = useState<4 | 5>(5);
+  const [dueDateTouched, setDueDateTouched] = useState(false);
 
   const questionCountExceedsMax = Number(questionCount) > MAX_QUESTIONS;
   const selectedClasses = classes.filter((c) => selectedClassIds.includes(c.id));
+  const dueDateMissing = dueDateTouched && !dueDate.trim();
 
   const toggleClassId = (id: string) => {
     setSelectedClassIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
   };
 
   const onSubmit = async () => {
-    if (!title.trim() || !questionCount.trim()) return;
+    if (!dueDate.trim()) {
+      setDueDateTouched(true);
+    }
+    if (!title.trim() || !questionCount.trim() || !dueDate.trim()) return;
     const id = generateExamId();
     await createExam({
       id,
@@ -117,6 +122,11 @@ export default function NewExam() {
             {dueDate ? parseIsoDate(dueDate)?.toLocaleDateString('pt-BR') : 'Selecionar data de entrega'}
           </Text>
         </Pressable>
+        {dueDateMissing ? (
+          <Text variant="caption" color={colors.danger} style={styles.dueDateError}>
+            Escolha um prazo para a prova
+          </Text>
+        ) : null}
         {showDatePicker ? (
           <DateTimePicker
             value={parseIsoDate(dueDate) ?? new Date()}
@@ -207,6 +217,9 @@ const styles = StyleSheet.create({
     borderColor: colors.progressTrack,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
+    marginBottom: spacing.md,
+  },
+  dueDateError: {
     marginBottom: spacing.md,
   },
   title: {

@@ -10,6 +10,8 @@ import { PillButton } from '../../../../components/ui/PillButton';
 import { colors, radii, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { useClassStore } from '../../../../store/classStore';
+import { useSubscriptionStatus } from '../../../../hooks/useSubscriptionStatus';
+import { isExamPastDue } from '../../../../lib/exam/deadline';
 
 const MAX_QUESTIONS = 15;
 
@@ -35,9 +37,13 @@ export default function EditExam() {
   const updateExam = useExamStore((s) => s.updateExam);
   const linkExamClasses = useExamStore((s) => s.linkExamClasses);
   const classes = useClassStore((s) => s.classes);
+  const { hasActiveSubscription } = useSubscriptionStatus();
 
   const exam = exams.find((e) => e.id === examId);
   const hasResults = examResults.some((r) => r.examId === examId);
+  // Prazo vencido trava a edição do prazo (e do gabarito, na outra tela) só para contas sem
+  // assinatura ativa — é uma medida anti-abuso do plano gratuito, não uma limitação do produto.
+  const dueDateLocked = !!exam && isExamPastDue(exam) && !hasActiveSubscription;
   const linkedClassIds = useMemo(
     () => examClasses.filter((l) => l.examId === examId).map((l) => l.classId),
     [examClasses, examId],
@@ -115,11 +121,20 @@ export default function EditExam() {
         <Text variant="caption" weight="medium" color={colors.textMuted} style={styles.dateLabel}>
           Prazo
         </Text>
-        <Pressable style={styles.dateInput} onPress={() => setShowDatePicker(true)}>
+        <Pressable
+          style={styles.dateInput}
+          onPress={() => !dueDateLocked && setShowDatePicker(true)}
+          disabled={dueDateLocked}
+        >
           <Text variant="body" color={dueDate ? colors.textPrimary : colors.textMuted}>
             {dueDate ? parseIsoDate(dueDate)?.toLocaleDateString('pt-BR') : 'Selecionar data de entrega'}
           </Text>
         </Pressable>
+        {dueDateLocked ? (
+          <Text variant="caption" color={colors.textMuted} style={styles.lockedHint}>
+            O prazo dessa prova já passou, por isso não é mais possível alterá-lo.
+          </Text>
+        ) : null}
         {showDatePicker ? (
           <DateTimePicker
             value={parseIsoDate(dueDate) ?? new Date()}

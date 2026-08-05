@@ -1,13 +1,16 @@
 import { create } from 'zustand';
 import { getAll } from '../lib/localDb/repository';
 import { AnswerKey, Exam, STORAGE_KEYS } from '../lib/localDb/schema';
-import { mockAnswerKeys, mockExams } from '../lib/mockData';
+import { mockAnswerKeys, mockExams, CALIBRATION_EXAM_ID } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
+import { addDays, toIsoDate } from '../lib/exam/deadline';
 import { ensureMigrated, claimOrphanedRows } from '../lib/db/client';
 import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
 import { ExamResultRecord, listAllExamResults, upsertExamResult } from '../lib/db/examResultsRepository';
 import { ExamClassLink, listExamClassLinks, setExamClasses } from '../lib/db/examClassesRepository';
+
+const CALIBRATION_EXAM_DUE_DAYS = 60;
 
 /** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved. */
 function backfillExam(exam: Exam, sequence: number): Exam {
@@ -105,7 +108,13 @@ export const useExamStore = create<ExamStore>((set, get) => ({
         // (e.g. CALIBRATION_EXAM_ID) that would otherwise collide — and silently reassign
         // ownership — across different accounts sharing this device.
         for (const exam of mockExams) {
-          await upsertExam({ ...exam, id: `${userId}:${exam.id}` }, userId);
+          // Prazo do gabarito de calibração é sempre "conta criada + N dias" — calculado aqui no
+          // seed (não fixo em mockData.ts) para valer a partir da criação de cada conta.
+          const dueDate =
+            exam.id === CALIBRATION_EXAM_ID
+              ? toIsoDate(addDays(new Date(), CALIBRATION_EXAM_DUE_DAYS))
+              : exam.dueDate;
+          await upsertExam({ ...exam, id: `${userId}:${exam.id}`, dueDate }, userId);
         }
         for (const answerKey of mockAnswerKeys) {
           await upsertAnswerKey({ ...answerKey, examId: `${userId}:${answerKey.examId}` }, userId);
