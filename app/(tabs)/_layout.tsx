@@ -6,9 +6,9 @@ import { colors } from '../../theme/tokens';
 import { useSubscriptionStatus } from '../../hooks/useSubscriptionStatus';
 
 const TAB_ITEMS: TabItem[] = [
-  { key: 'home', label: 'Início', icon: 'home-sharp', route: '/home' },
-  { key: 'exams', label: 'Provas', icon: 'clipboard', route: '/exams' },
-  { key: 'statistics', label: 'Estatísticas', icon: 'stats-chart', route: '/statistics' },
+  { key: 'home', label: 'Início', icon: 'apps', route: '/home' },
+  { key: 'exams', label: 'Provas', icon: 'newspaper', route: '/exams' },
+  { key: 'classes', label: 'Turmas', icon: 'school', route: '/classes' },
   { key: 'profile', label: 'Perfil', icon: 'person', route: '/profile' },
 ];
 

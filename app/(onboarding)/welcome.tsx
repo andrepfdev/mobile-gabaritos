@@ -2,58 +2,112 @@ import React, { useRef, useState } from 'react';
 import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import Svg, { Circle, Rect, Text as SvgText } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../theme/tokens';
 import { Text } from '../../components/ui/Text';
 import { PillButton } from '../../components/ui/PillButton';
-import { Card } from '../../components/ui/Card';
-import { StatusTag } from '../../components/ui/StatusTag';
-import { GaugeChart } from '../../components/ui/GaugeChart';
-import { BarChart } from '../../components/ui/BarChart';
-import { weekdayCorrections } from '../../lib/mockData';
 import { useAuthStore } from '../../store/authStore';
 
 const { width } = Dimensions.get('window');
 
-const SLIDES = [
+type Icon = { kind: 'gabarito' } | { kind: 'ionicon'; name: React.ComponentProps<typeof Ionicons>['name'] };
+
+const SLIDES: { title: string; highlight?: string; subtitle: string; icon: Icon; bg: string }[] = [
   {
-    title: 'Bem-vindo ao ProvaZero!',
-    subtitle: 'Organize suas provas e acompanhe o desempenho das correções em um só app.',
+    title: 'Nuca mais sofra corrigindo provas!',
+    highlight: 'ProvaZero',
+    subtitle: 'O ProvaZero ajuda você a criar, aplicar e corrigir avaliações em instantes. Mais tempo para o que realmente importa.',
+    icon: { kind: 'gabarito' },
+    bg: colors.coralSoft,
   },
   {
-    title: 'Corrija provas em minutos',
-    subtitle: 'Marque as respostas dos alunos e compare com o gabarito oficial na hora, direto do celular.',
-  },
-  {
-    title: 'Estatísticas por aluno e turma',
-    subtitle: 'Acompanhe taxa de acerto, tempo de correção e evolução de cada turma.',
-  },
-  {
-    title: 'Histórico completo de provas',
-    subtitle: 'Todas as suas provas corrigidas ficam salvas e organizadas no dispositivo.',
+    title: 'Sinta a facilidade no seu dia a dia',
+    subtitle: 'Crie gabaritos e avaliações em poucos cliques. Simplifique sua rotina pedagógica com o ProvaZero.',
+    icon: { kind: 'ionicon', name: 'checkmark-done-outline' },
+    bg: colors.yellowSoft,
   },
 ];
 
-function CardFan() {
+function SlideTitle({ title, highlight }: { title: string; highlight?: string }) {
+  const index = highlight ? title.indexOf(highlight) : -1;
+  if (!highlight || index === -1) {
+    return (
+      <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
+        {title}
+      </Text>
+    );
+  }
+
+  const before = title.slice(0, index);
+  const after = title.slice(index + highlight.length);
+
   return (
-    <View style={styles.fan}>
-      <Card variant="light" style={[styles.fanCard, styles.fanCardLeft]}>
-        <StatusTag label="60% corrigidas" bg={colors.grayLight} />
-        <Text variant="hero" weight="bold" style={{ marginTop: spacing.sm }}>
-          5
-        </Text>
-        <Text variant="caption" color={colors.textMuted}>
-          Provas hoje
-        </Text>
-      </Card>
-      <Card variant="dark" style={[styles.fanCard, styles.fanCardCenter]}>
-        <GaugeChart percentage={94} size={100} label="Acerto médio" />
-      </Card>
-      <Card variant="light" style={[styles.fanCard, styles.fanCardRight]}>
-        <Text variant="caption" weight="medium" color={colors.textMuted}>
-          Correções da semana
-        </Text>
-        <BarChart data={weekdayCorrections} height={70} />
-      </Card>
+    <Text variant="h1" weight="bold" color={colors.textPrimary} style={styles.title}>
+      {before}
+      <Text variant="h1" weight="bold" color={colors.coral}>
+        {highlight}
+      </Text>
+      {after}
+    </Text>
+  );
+}
+
+/** Line-art answer sheet: numbered rows, lettered bubbles (A–E), one filled per row. */
+function GabaritoIcon({ color, size = 132 }: { color: string; size?: number }) {
+  const letters = ['A', 'B', 'C', 'D', 'E'];
+  const rowY = [42, 76, 110, 144, 178];
+  const filledIndex = [1, 3, 2, 0, 4];
+  const colX = [61, 88, 115, 142, 169];
+  const bubbleR = 11;
+
+  return (
+    <Svg width={size} height={size * 1.1} viewBox="0 0 200 220">
+      <Rect x="12" y="12" width="176" height="196" rx="20" stroke={color} strokeWidth={5} fill="#ffffff" />
+      {rowY.map((y, row) => (
+        <React.Fragment key={y}>
+          <SvgText x={30} y={y + 7} fontSize={20} fontWeight="700" fill={color} textAnchor="middle">
+            {row + 1}
+          </SvgText>
+          {colX.map((x, col) => {
+            const filled = col === filledIndex[row];
+            return (
+              <React.Fragment key={x}>
+                <Circle
+                  cx={x}
+                  cy={y}
+                  r={bubbleR}
+                  stroke={color}
+                  strokeWidth={2.5}
+                  fill={filled ? color : '#ffffff'}
+                />
+                <SvgText
+                  x={x}
+                  y={y + 4}
+                  fontSize={12}
+                  fontWeight="700"
+                  fill={filled ? '#ffffff' : color}
+                  textAnchor="middle"
+                >
+                  {letters[col]}
+                </SvgText>
+              </React.Fragment>
+            );
+          })}
+        </React.Fragment>
+      ))}
+    </Svg>
+  );
+}
+
+function SlideIllustration({ icon, bg }: { icon: Icon; bg: string }) {
+  return (
+    <View style={[styles.panel, { backgroundColor: bg }]}>
+      {icon.kind === 'gabarito' ? (
+        <GabaritoIcon color={colors.coral} />
+      ) : (
+        <Ionicons name={icon.name} size={108} color={colors.coral} />
+      )}
     </View>
   );
 }
@@ -81,11 +135,7 @@ export default function Welcome() {
   };
 
   return (
-    <View style={styles.container}>
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <CardFan />
-      </SafeAreaView>
-
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -95,68 +145,56 @@ export default function Welcome() {
         style={styles.scroll}
       >
         {SLIDES.map((slide) => (
-          <View key={slide.title} style={[styles.slide, { width }]}>
-            <Text variant="h1" weight="bold" color={colors.white} style={styles.title}>
-              {slide.title}
-            </Text>
-            <Text variant="body" color="#c9c9c9" style={styles.subtitle}>
-              {slide.subtitle}
-            </Text>
+          <View key={slide.title} style={{ width }}>
+            <SlideIllustration icon={slide.icon} bg={slide.bg} />
+            <View style={styles.textArea}>
+              <SlideTitle title={slide.title} highlight={slide.highlight} />
+              <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
+                {slide.subtitle}
+              </Text>
+            </View>
           </View>
         ))}
       </ScrollView>
 
-      <SafeAreaView edges={['bottom']} style={styles.footer}>
+      <View style={styles.footer}>
         <View style={styles.dots}>
           {SLIDES.map((slide, i) => (
             <View key={slide.title} style={[styles.dot, i === index && styles.dotActive]} />
           ))}
         </View>
-        <PillButton title={isLast ? 'Começar' : 'Próximo'} variant="light" onPress={goNext} />
-      </SafeAreaView>
-    </View>
+        <PillButton title={isLast ? 'Começar' : 'Próximo'} variant="accent" onPress={goNext} />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.dark,
-  },
-  safeArea: {
-    paddingTop: spacing.xl,
-  },
-  fan: {
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fanCard: {
-    position: 'absolute',
-    width: 150,
-  },
-  fanCardLeft: {
-    transform: [{ rotate: '-8deg' }, { translateX: -90 }],
-  },
-  fanCardCenter: {
-    transform: [{ rotate: '0deg' }],
-    zIndex: 2,
-  },
-  fanCardRight: {
-    transform: [{ rotate: '8deg' }, { translateX: 90 }],
+    backgroundColor: colors.bgCream,
   },
   scroll: {
     flex: 1,
   },
-  slide: {
+  panel: {
+    height: '55%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  textArea: {
     paddingHorizontal: spacing.lg,
-    justifyContent: 'flex-start',
-    paddingTop: spacing.lg,
+    paddingTop: spacing.xl,
+    alignItems: 'center',
   },
   title: {
+    textAlign: 'center',
     marginBottom: spacing.sm,
   },
-  subtitle: {},
+  subtitle: {
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+  },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
@@ -170,11 +208,11 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4a4a4a',
+    backgroundColor: colors.progressTrack,
     marginHorizontal: 4,
   },
   dotActive: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.dark,
     width: 20,
   },
 });

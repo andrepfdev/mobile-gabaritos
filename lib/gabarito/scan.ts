@@ -1,354 +1,298 @@
-import { Image } from 'react-native';
-import { GLView } from 'expo-gl';
-import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import { GabaritoLayout } from './layout';
+import { findCornerMarksScored } from './omr/corners';
+import {
+  BubbleRowDebug,
+  ScanAnswers,
+  readBubblesOnCanonical,
+  unansweredRatio,
+  scoreAgainstAnswerKey,
+} from './omr/bubbles';
+import { CornerQuad, warpToCanonical } from './omr/geometry';
+import { flipGrayX, flipGrayY, loadGrayImage } from './omr/loadGray';
+import {
+  detectAndWarpNativeOmr,
+  isNativeArucoAvailable,
+  NativeArucoMotor,
+  NativeOmrError,
+} from './omr/nativeAruco';
 
-const MARK_THRESHOLD = 200; // 0-255 gray level; absolute safety ceiling, the darkest option must still be reasonably dark
-const MIN_SEPARATION = 20; // required absolute gap to the second-darkest bubble to avoid ambiguous double-marks
-// The darkest option must be at least this fraction darker than the row's own *lightest* reading
-// (not a fixed absolute value) before we call it marked. A faint print or a shadowed photo
-// compresses every reading in a row into a narrow, uniformly darker band — comparing against a
-// fixed threshold is unstable there (small per-shot noise flips which option "wins"), but
-// comparing each option against what that same row's blank paper actually looked like in this
-// photo adapts automatically to the real contrast available, whatever it is.
-const RELATIVE_DROP_RATIO = 0.35;
-const DARKEST_FRACTION = 0.15; // fraction of the sample window's darkest pixels averaged per bubble
-const CORNER_MARK_THRESHOLD = 100; // corner squares are printed solid near-black, stricter than bubble marks
-const MIN_CORNER_DARK_PIXELS = 10;
-export const AMBIGUOUS_RATIO_THRESHOLD = 0.4;
+export { unansweredRatio, scoreAgainstAnswerKey };
+export type { ScanAnswers };
+/** Fraction of blank answers at/above which UI asks for rescan (~10%). */
+export const AMBIGUOUS_RATIO_THRESHOLD = 0.1;
 
-export type ScanAnswers = Record<number, string | undefined>;
-type PixelPoint = { x: number; y: number };
+const CANONICAL_WIDTH = 1000;
+const FLIP_MODES: ScanFlipMode[] = ['none', 'x', 'y', 'xy'];
 
-// TEMPORARY diagnostic data — remove once the pixel-reading pipeline is confirmed working
-// end-to-end on a real device. Lets scan-result.tsx show raw numbers instead of guessing.
+export class GabaritoScanError extends Error {
+  imageWidth?: number;
+  imageHeight?: number;
+  corners?: Partial<CornerQuad>;
+  motor?: NativeArucoMotor;
+  code?: string;
+  markersFound?: number[];
+
+  constructor(
+    message: string,
+    info?: {
+      imageWidth?: number;
+      imageHeight?: number;
+      corners?: GabaritoScanError['corners'];
+      motor?: NativeArucoMotor;
+      code?: string;
+      markersFound?: number[];
+    },
+  ) {
+    super(message);
+    this.name = 'GabaritoScanError';
+    this.imageWidth = info?.imageWidth;
+    this.imageHeight = info?.imageHeight;
+    this.corners = info?.corners;
+    this.motor = info?.motor;
+    this.code = info?.code;
+    this.markersFound = info?.markersFound;
+  }
+}
+
+export type ScanFlipMode = 'none' | 'x' | 'y' | 'xy';
+
 export type ScanDebugInfo = {
   imageWidth: number;
   imageHeight: number;
+  canonicalWidth: number;
+  canonicalHeight: number;
   sampleSize: number;
-  corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint };
-  rows: {
-    question: number;
-    readings: { option: string; value: number }[];
-    darkestOption?: string;
-    darkestValue: number;
-    secondDarkestValue: number;
-    lightestValue: number;
-    isMarked: boolean;
-  }[];
+  corners: CornerQuad;
+  rows: BubbleRowDebug[];
+  /** @deprecated use flipMode */
+  flippedY: boolean;
+  flipMode: ScanFlipMode;
+  motor: NativeArucoMotor;
+  arucoIds: number[];
+  arucoScore: number;
+  /** TEMPORARY profiling — split of the native round-trip vs the JS bubble read. */
+  nativeMs?: number;
+  bubblesMs?: number;
+  /** TEMPORARY profiling — native-side breakdown, only present on the OpenCV path. */
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
 };
 
-function getImageSize(uri: string): Promise<{ width: number; height: number }> {
-  return new Promise((resolve, reject) => {
-    Image.getSize(uri, (width, height) => resolve({ width, height }), reject);
-  });
+type PipelineHit = {
+  answers: ScanAnswers;
+  rows: BubbleRowDebug[];
+  corners: CornerQuad;
+  canonicalHeight: number;
+  imageWidth: number;
+  imageHeight: number;
+  flipMode: ScanFlipMode;
+  arucoScore: number;
+  arucoIds: number[];
+  motor: NativeArucoMotor;
+  nativeMs?: number;
+  bubblesMs?: number;
+  decodeMs?: number;
+  detectMs?: number;
+  warpMs?: number;
+  claheMs?: number;
+};
+
+function applyFlip(gray: Uint8Array, width: number, height: number, flipMode: ScanFlipMode): Uint8Array {
+  if (flipMode === 'none') return gray;
+  if (flipMode === 'x') return flipGrayX(gray, width, height);
+  if (flipMode === 'y') return flipGrayY(gray, width, height);
+  return flipGrayY(flipGrayX(gray, width, height), width, height);
 }
 
-/**
- * Reads an RGBA rectangle from the framebuffer-bound texture and converts it to grayscale
- * (standard luma weighting) — WebGL only gives us RGBA, but every downstream function
- * (corner centroid, darkest-fraction) works on a flat grayscale byte array, same shape as
- * what the previous Skia-based reader produced.
- */
-function readGrayPixels(gl: ExpoWebGLRenderingContext, x: number, y: number, w: number, h: number): Uint8Array {
-  const rgba = new Uint8Array(w * h * 4);
-  gl.readPixels(x, y, w, h, gl.RGBA, gl.UNSIGNED_BYTE, rgba);
-  const gray = new Uint8Array(w * h);
-  for (let i = 0; i < w * h; i++) {
-    const r = rgba[i * 4];
-    const g = rgba[i * 4 + 1];
-    const b = rgba[i * 4 + 2];
-    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-  }
-  return gray;
-}
-
-/**
- * Average of the darkest `DARKEST_FRACTION` of pixels in the window, instead of the plain mean.
- * A handwritten pen mark rarely fills a bubble solidly — it's a loose scribble with a lot of
- * white still showing through, which dilutes a plain mean into a middling gray indistinguishable
- * from an unmarked (or merely shadowed) bubble. But the ink stroke itself is genuinely dark
- * wherever it touches, so averaging just the darkest slice of pixels picks that up reliably,
- * while a uniformly-lit or uniformly-shadowed blank bubble stays close to its true brightness
- * (shadows darken evenly — they rarely produce truly near-black pixels the way ink does).
- */
-function darkestFractionGray(pixels: Uint8Array): number {
-  if (pixels.length === 0) return 255;
-  const sorted = Array.from(pixels).sort((a, b) => a - b);
-  const count = Math.max(1, Math.round(sorted.length * DARKEST_FRACTION));
-  let sum = 0;
-  for (let i = 0; i < count; i++) sum += sorted[i];
-  return sum / count;
-}
-
-/** Centroid of every below-threshold pixel within `region`, or null if too few were found. */
-function centroidOfDarkPixels(
-  gl: ExpoWebGLRenderingContext,
-  region: { x: number; y: number; width: number; height: number },
-  minDarkPixels: number,
-): { point: PixelPoint; count: number } | null {
-  const regionX = Math.max(0, Math.round(region.x));
-  const regionY = Math.max(0, Math.round(region.y));
-  const regionWidth = Math.max(1, Math.round(region.width));
-  const regionHeight = Math.max(1, Math.round(region.height));
-
-  const pixels = readGrayPixels(gl, regionX, regionY, regionWidth, regionHeight);
-
-  let sumX = 0;
-  let sumY = 0;
-  let count = 0;
-  for (let row = 0; row < regionHeight; row++) {
-    const rowOffset = row * regionWidth;
-    for (let col = 0; col < regionWidth; col++) {
-      if (pixels[rowOffset + col] < CORNER_MARK_THRESHOLD) {
-        sumX += col;
-        sumY += row;
-        count++;
-      }
+/** Approximate CLAHE: stretch luminance using p5–p95 (JS fallback path only). */
+function equalizeGrayRough(gray: Uint8Array): Uint8Array {
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
+  const total = gray.length;
+  let acc = 0;
+  let lo = 0;
+  let hi = 255;
+  const pLo = total * 0.05;
+  const pHi = total * 0.95;
+  for (let i = 0; i < 256; i++) {
+    acc += hist[i];
+    if (acc >= pLo && lo === 0) lo = i;
+    if (acc >= pHi) {
+      hi = i;
+      break;
     }
   }
-
-  if (count < minDarkPixels) return null;
-  return { point: { x: regionX + sumX / count, y: regionY + sumY / count }, count };
+  const span = Math.max(1, hi - lo);
+  const out = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) {
+    out[i] = Math.max(0, Math.min(255, Math.round(((gray[i] - lo) * 255) / span)));
+  }
+  return out;
 }
 
-/**
- * The captured photo's frame is not the sheet — there's always margin around it (desk, hands,
- * whatever's behind it), and its exact position/scale in the frame isn't guaranteed to match the
- * on-screen alignment guide. So instead of trusting screen-space geometry, we locate the actual
- * printed corner marks in the photo (each is a small solid dark square) and use their detected
- * pixel positions as the source of truth for where the sheet really is.
- *
- * A quadrant of the photo can easily contain other dark stuff besides the mark (a dark desk,
- * a shadow, the photo background) — if that region is bigger than the small printed square, a
- * plain centroid over the whole quadrant gets pulled toward it instead of the actual mark. So we
- * locate a rough centroid first, then refine by recomputing the centroid within a tight window
- * around it — small enough to exclude distant background, generous enough to still contain the
- * mark even if the rough pass was somewhat off.
- */
-function findCornerMark(gl: ExpoWebGLRenderingContext, region: { x: number; y: number; width: number; height: number }): PixelPoint | null {
-  let current = centroidOfDarkPixels(gl, region, MIN_CORNER_DARK_PIXELS);
-  if (!current) return null;
+async function analyzeWithOpenCv(photoUri: string, layout: GabaritoLayout): Promise<PipelineHit> {
+  const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
+  // TEMPORARY profiling — split native round-trip vs JS bubble read (debug card only).
+  const tNativeStart = Date.now();
+  const hit = await detectAndWarpNativeOmr(photoUri, CANONICAL_WIDTH, canonicalHeight, layout.corners);
+  const nativeMs = Date.now() - tNativeStart;
 
-  // Two refinement passes, each in a tighter window centered on the previous result — each pass
-  // further reduces the chance that background/shadow bigger than the mark itself is still
-  // pulling the centroid away from the true small square.
-  let windowSize = Math.max(region.width, region.height);
-  for (let pass = 0; pass < 2; pass++) {
-    windowSize *= 0.15;
-    const refined = centroidOfDarkPixels(
-      gl,
-      {
-        x: current.point.x - windowSize / 2,
-        y: current.point.y - windowSize / 2,
-        width: windowSize,
-        height: windowSize,
-      },
-      MIN_CORNER_DARK_PIXELS,
+  const tBubblesStart = Date.now();
+  const { answers, rows } = readBubblesOnCanonical(
+    hit.warpedGray,
+    hit.warpedWidth,
+    hit.warpedHeight,
+    layout,
+  );
+  const bubblesMs = Date.now() - tBubblesStart;
+
+  return {
+    answers,
+    rows,
+    corners: hit.corners,
+    canonicalHeight: hit.warpedHeight,
+    imageWidth: hit.detectWidth,
+    imageHeight: hit.detectHeight,
+    flipMode: hit.flipMode,
+    arucoScore: hit.score,
+    arucoIds: hit.ids,
+    motor: 'OpenCV-ArUco',
+    nativeMs,
+    bubblesMs,
+    decodeMs: hit.decodeMs,
+    detectMs: hit.detectMs,
+    warpMs: hit.warpMs,
+    claheMs: hit.claheMs,
+  };
+}
+
+function analyzeWithJsAruco(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  layout: GabaritoLayout,
+): PipelineHit | null {
+  let best: PipelineHit | null = null;
+  const canonicalHeight = Math.max(200, Math.round(CANONICAL_WIDTH / layout.aspectRatio));
+
+  for (const flipMode of FLIP_MODES) {
+    const flipped = applyFlip(gray, width, height, flipMode);
+    const found = findCornerMarksScored(flipped, width, height);
+    if (!found) continue;
+
+    const canonical = warpToCanonical(
+      flipped,
+      width,
+      height,
+      found.corners,
+      CANONICAL_WIDTH,
+      canonicalHeight,
+      layout.corners,
     );
-    if (!refined) break;
-    current = refined;
-  }
-
-  return current.point;
-}
-
-/** Rescales `value` from the [min, max] range onto 0..1. */
-function normalize(value: number, min: number, max: number): number {
-  return (value - min) / (max - min);
-}
-
-type Homography = { a: number; b: number; c: number; d: number; e: number; f: number; g: number; h: number };
-
-/**
- * Computes the projective transform (homography) mapping the unit square — (0,0)=top-left,
- * (1,0)=top-right, (1,1)=bottom-right, (0,1)=bottom-left — onto the 4 detected corner pixels.
- * Unlike plain bilinear interpolation (which only blends linearly and drifts further off the
- * further a point is from the corners), this accounts for the actual perspective/rotation of the
- * photographed sheet — the classic "unit square to quad" mapping used by graphics engines for
- * poly-to-poly transforms. Computed once per photo, then reused for every bubble.
- */
-function computeHomography(corners: { topLeft: PixelPoint; topRight: PixelPoint; bottomLeft: PixelPoint; bottomRight: PixelPoint }): Homography {
-  const x0 = corners.topLeft.x, y0 = corners.topLeft.y;
-  const x1 = corners.topRight.x, y1 = corners.topRight.y;
-  const x2 = corners.bottomRight.x, y2 = corners.bottomRight.y;
-  const x3 = corners.bottomLeft.x, y3 = corners.bottomLeft.y;
-
-  const dx1 = x1 - x2, dy1 = y1 - y2;
-  const dx2 = x3 - x2, dy2 = y3 - y2;
-  const sx = x0 - x1 + x2 - x3;
-  const sy = y0 - y1 + y2 - y3;
-
-  const denom = dx1 * dy2 - dy1 * dx2;
-  const g = denom !== 0 ? (sx * dy2 - sy * dx2) / denom : 0;
-  const h = denom !== 0 ? (dx1 * sy - dy1 * sx) / denom : 0;
-
-  return {
-    a: x1 - x0 + g * x1,
-    b: x3 - x0 + h * x3,
-    c: x0,
-    d: y1 - y0 + g * y1,
-    e: y3 - y0 + h * y3,
-    f: y0,
-    g,
-    h,
-  };
-}
-
-/** Maps a layout percentage (0..1, 0..1) to an actual photo pixel through the sheet's homography. */
-function toPixel(homography: Homography, u: number, v: number): PixelPoint {
-  const w = homography.g * u + homography.h * v + 1;
-  return {
-    x: (homography.a * u + homography.b * v + homography.c) / w,
-    y: (homography.d * u + homography.e * v + homography.f) / w,
-  };
-}
-
-/**
- * Decodes a captured gabarito photo once (via a headless expo-gl context — the photo is loaded
- * as a GL texture, attached to a framebuffer, and read back with readPixels; no visible component
- * needed), locates its 4 printed corner marks, computes the perspective transform (homography)
- * from those corners, then for every bubble in `layout` samples a small grayscale window at its
- * true photographed position (mapped through that homography, not raw photo percentages) to find
- * the darkest (filled-in) option per question. This tolerates the sheet being framed anywhere/any
- * scale/rotation/perspective tilt within the photo — the homography corrects for a tilted camera
- * angle, unlike a simpler bilinear blend.
- */
-export async function analyzeGabarito(photoUri: string, layout: GabaritoLayout): Promise<{ answers: ScanAnswers; debug: ScanDebugInfo }> {
-  const { width, height } = await getImageSize(photoUri);
-
-  const gl = await GLView.createContextAsync();
-  const texture = gl.createTexture();
-  const framebuffer = gl.createFramebuffer();
-
-  try {
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    // Flips the source image on upload so readPixels(0,0) below ends up matching the photo's own
-    // top-left corner — without this, WebGL's bottom-left-origin readPixels would read everything
-    // upside down relative to the top-left-origin math the rest of this file assumes.
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    // `{ localUri }` is an Expo-specific extension of texImage2D (not part of the standard WebGL
-    // TS types), so this call needs a cast.
-    (gl.texImage2D as (...args: unknown[]) => void)(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, { localUri: photoUri });
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-    gl.viewport(0, 0, width, height);
-
-    // Each corner mark is searched for within its own quadrant of the photo — the on-screen guide
-    // gets the sheet roughly centered/filling the frame, so this is a generous-but-bounded search.
-    const topLeft = findCornerMark(gl, { x: 0, y: 0, width: width * 0.5, height: height * 0.5 });
-    const topRight = findCornerMark(gl, { x: width * 0.5, y: 0, width: width * 0.5, height: height * 0.5 });
-    const bottomLeft = findCornerMark(gl, { x: 0, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
-    const bottomRight = findCornerMark(gl, { x: width * 0.5, y: height * 0.5, width: width * 0.5, height: height * 0.5 });
-
-    if (!topLeft || !topRight || !bottomLeft || !bottomRight) {
-      throw new Error('Não foi possível localizar as marcas de canto do gabarito na foto.');
-    }
-    const corners = { topLeft, topRight, bottomLeft, bottomRight };
-
-    // Use the detected top edge span as the sheet's effective on-photo width, to size sample
-    // windows relative to the sheet's actual scale in this photo (not the raw photo dimensions).
-    const sheetWidthPx = Math.hypot(topRight.x - topLeft.x, topRight.y - topLeft.y);
-    // 1.5x the bubble's own diameter, not just the diameter — gives margin for small residual
-    // position error (homography is only as good as the detected corners) and for handwritten
-    // scribbles that aren't perfectly centered in the printed circle, without overlapping the
-    // neighboring bubble (spaced much further apart than this window is wide).
-    const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * sheetWidthPx));
-
-    // The corner marks themselves sit inset from the sheet's true edges (layout.corners.*.xPct/yPct
-    // are e.g. ~0.035/~0.965, not exactly 0/1) — every bubble percentage must be renormalized onto
-    // that same [corner, corner] span before the homography below, otherwise u=0.15 gets treated
-    // as "15% of the way from one corner mark to the other" when it's really ~15% of the *whole
-    // page*, which is a bit further along the corner-to-corner span — this was silently shifting
-    // every sampled bubble off by a fraction of a column.
-    const uMin = layout.corners.topLeft.xPct;
-    const uMax = layout.corners.topRight.xPct;
-    const vMin = layout.corners.topLeft.yPct;
-    const vMax = layout.corners.bottomLeft.yPct;
-
-    const homography = computeHomography(corners);
-
-    const answers: ScanAnswers = {};
-    const debugRows: ScanDebugInfo['rows'] = [];
-
-    for (const row of layout.rows) {
-      let darkestOption: string | undefined;
-      let darkestValue = Infinity;
-      let secondDarkestValue = Infinity;
-      let lightestValue = -Infinity;
-      const readings: { option: string; value: number }[] = [];
-
-      for (const bubble of row.options) {
-        const u = normalize(bubble.center.xPct, uMin, uMax);
-        const v = normalize(bubble.center.yPct, vMin, vMax);
-        const center = toPixel(homography, u, v);
-        const x = Math.min(Math.max(0, Math.round(center.x - sampleSize / 2)), Math.max(0, width - sampleSize));
-        const y = Math.min(Math.max(0, Math.round(center.y - sampleSize / 2)), Math.max(0, height - sampleSize));
-
-        const pixels = readGrayPixels(gl, x, y, sampleSize, sampleSize);
-        const value = darkestFractionGray(pixels);
-        readings.push({ option: bubble.option, value: Math.round(value) });
-
-        if (value < darkestValue) {
-          secondDarkestValue = darkestValue;
-          darkestValue = value;
-          darkestOption = bubble.option;
-        } else if (value < secondDarkestValue) {
-          secondDarkestValue = value;
-        }
-        if (value > lightestValue) {
-          lightestValue = value;
-        }
-      }
-
-      const isMarked =
-        darkestValue < MARK_THRESHOLD &&
-        secondDarkestValue - darkestValue >= MIN_SEPARATION &&
-        darkestValue <= lightestValue * (1 - RELATIVE_DROP_RATIO);
-      answers[row.question - 1] = isMarked ? darkestOption : undefined;
-      debugRows.push({
-        question: row.question,
-        readings,
-        darkestOption,
-        darkestValue: Math.round(darkestValue),
-        secondDarkestValue: Number.isFinite(secondDarkestValue) ? Math.round(secondDarkestValue) : -1,
-        lightestValue: Math.round(lightestValue),
-        isMarked,
-      });
-    }
-
-    return {
+    // Cheap illumination flatten (native path uses OpenCV CLAHE on the warped Mat).
+    const normalized = equalizeGrayRough(canonical);
+    const { answers, rows } = readBubblesOnCanonical(
+      normalized,
+      CANONICAL_WIDTH,
+      canonicalHeight,
+      layout,
+    );
+    const pipeline: PipelineHit = {
       answers,
-      debug: { imageWidth: width, imageHeight: height, sampleSize, corners, rows: debugRows },
+      rows,
+      corners: found.corners,
+      canonicalHeight,
+      imageWidth: width,
+      imageHeight: height,
+      flipMode,
+      arucoScore: found.score,
+      arucoIds: found.ids,
+      motor: 'JS-ArUco',
     };
-  } finally {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.deleteFramebuffer(framebuffer);
-    gl.deleteTexture(texture);
-    await GLView.destroyContextAsync(gl);
+    if (!best || pipeline.arucoScore > best.arucoScore) best = pipeline;
   }
+
+  return best;
 }
 
-export function unansweredRatio(answers: ScanAnswers, questionCount: number): number {
-  if (questionCount === 0) return 0;
-  let unanswered = 0;
-  for (let i = 0; i < questionCount; i++) {
-    if (!answers[i]) unanswered++;
-  }
-  return unanswered / questionCount;
-}
+/**
+ * Canonical OMR pipeline:
+ * 1) Android+OpenCV: native detect (CLAHE/SUBPIX) + warpPerspective → bubbles on same buffer
+ * 2) Else (web/sim): JS ArUco 4/4 + JS warp
+ * 3) Flip chosen by ArUco quality; missing 4/4 → explicit typed rescan error
+ */
+export async function analyzeGabarito(
+  photoUri: string,
+  layout: GabaritoLayout,
+): Promise<{ answers: ScanAnswers; debug: ScanDebugInfo }> {
+  const preferNative = isNativeArucoAvailable();
 
-export function scoreAgainstAnswerKey(answers: ScanAnswers, answerKey: Record<number, string>, questionCount: number) {
-  let correctCount = 0;
-  for (let i = 0; i < questionCount; i++) {
-    if (answers[i] && answers[i] === answerKey[i]) correctCount++;
+  let best: PipelineHit | null = null;
+
+  if (preferNative) {
+    try {
+      best = await analyzeWithOpenCv(photoUri, layout);
+    } catch (error) {
+      if (error instanceof NativeOmrError) {
+        throw new GabaritoScanError(
+          error.code === 'incomplete_markers'
+            ? `${error.message} Reenquadre a grade com as marcas nos cantos, boa luz e sem reflexo — e escaneie de novo.`
+            : error.message,
+          {
+            imageWidth: error.imageWidth,
+            imageHeight: error.imageHeight,
+            corners: undefined,
+            motor: 'OpenCV-ArUco',
+            code: error.code,
+            markersFound: error.markersFound,
+          },
+        );
+      }
+      throw new GabaritoScanError(
+        error instanceof Error ? error.message : 'Falha desconhecida no OpenCV.',
+        { motor: 'OpenCV-ArUco', code: 'native_throw' },
+      );
+    }
+  } else {
+    const { gray, width, height } = await loadGrayImage(photoUri);
+    best = analyzeWithJsAruco(gray, width, height, layout);
+    if (!best) {
+      throw new GabaritoScanError(
+        'Não foi possível localizar as 4 marcas ArUco de canto. Enquadre a folha inteira, com boa luz e sem objetos escuros atrás.',
+        { imageWidth: width, imageHeight: height, corners: undefined, motor: 'JS-ArUco', code: 'incomplete_markers' },
+      );
+    }
   }
-  const wrongCount = questionCount - correctCount;
-  const scorePercent = questionCount === 0 ? 0 : Math.round((correctCount / questionCount) * 100);
-  return { correctCount, wrongCount, scorePercent };
+
+  if (!best) {
+    throw new GabaritoScanError('Falha na leitura do gabarito.', { motor: preferNative ? 'OpenCV-ArUco' : 'JS-ArUco' });
+  }
+
+  const sampleSize = Math.max(6, Math.round(layout.bubbleRadiusPct * 2 * 1.5 * CANONICAL_WIDTH));
+
+  return {
+    answers: best.answers,
+    debug: {
+      imageWidth: best.imageWidth,
+      imageHeight: best.imageHeight,
+      canonicalWidth: CANONICAL_WIDTH,
+      canonicalHeight: best.canonicalHeight,
+      sampleSize,
+      corners: best.corners,
+      rows: best.rows,
+      flippedY: best.flipMode === 'y' || best.flipMode === 'xy',
+      flipMode: best.flipMode,
+      motor: best.motor,
+      arucoIds: best.arucoIds,
+      arucoScore: best.arucoScore,
+      nativeMs: best.nativeMs,
+      bubblesMs: best.bubblesMs,
+      decodeMs: best.decodeMs,
+      detectMs: best.detectMs,
+      warpMs: best.warpMs,
+      claheMs: best.claheMs,
+    },
+  };
 }

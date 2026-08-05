@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
@@ -8,9 +8,12 @@ import * as Sharing from 'expo-sharing';
 import { Text } from '../../../../components/ui/Text';
 import { PillButton } from '../../../../components/ui/PillButton';
 import { GabaritoSheet } from '../../../../components/gabarito/GabaritoSheet';
+import { TourHint } from '../../../../components/tour/TourHint';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { useAuthStore } from '../../../../store/authStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
+import { CALIBRATION_EXAM_CODE } from '../../../../lib/mockData';
 
 // Rendered well above screen resolution so the exported image stays sharp when printed at full
 // size — the preview below shows it scaled down to fit the screen, but capture() always grabs
@@ -20,10 +23,26 @@ const CAPTURE_WIDTH = 1600;
 export default function ExportGabarito() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
   const exams = useExamStore((s) => s.exams);
+  const answerKeys = useExamStore((s) => s.answerKeys);
   const exam = exams.find((e) => e.id === examId);
-  const viewShotRef = useRef<ViewShot>(null);
+  const isCalibration = exam?.code === CALIBRATION_EXAM_CODE;
+  const answerKey = isCalibration ? answerKeys.find((k) => k.examId === examId)?.answers : undefined;
+  const viewShotRef = useRef<React.ElementRef<typeof ViewShot>>(null);
+  const scrollRef = useRef<ScrollView>(null);
   const [busy, setBusy] = useState<'save' | 'share' | null>(null);
   const { width: screenWidth } = useWindowDimensions();
+  const calibrationTourStep = useAuthStore((s) => s.calibrationTourStep);
+  const advanceCalibrationTour = useAuthStore((s) => s.advanceCalibrationTour);
+  const skipCalibrationTour = useAuthStore((s) => s.skipCalibrationTour);
+  const showDownloadHint = isCalibration && calibrationTourStep === 'download';
+
+  // The highlighted buttons sit below the fold (under the gabarito preview) — scroll straight to
+  // them instead of leaving the teacher looking at the top of the screen with no hint in sight.
+  useEffect(() => {
+    if (showDownloadHint) {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }
+  }, [showDownloadHint]);
 
   if (!exam) {
     return (
@@ -49,6 +68,7 @@ export default function ExportGabarito() {
   };
 
   const onSave = async () => {
+    if (showDownloadHint) advanceCalibrationTour();
     setBusy('save');
     try {
       const permission = await MediaLibrary.requestPermissionsAsync(true);
@@ -58,7 +78,7 @@ export default function ExportGabarito() {
       }
       const uri = await capture();
       if (!uri) return;
-      await MediaLibrary.saveToLibraryAsync(uri);
+      await MediaLibrary.Asset.create(uri);
       Alert.alert('Salvo', 'A imagem do gabarito foi salva na sua galeria.');
     } finally {
       setBusy(null);
@@ -66,6 +86,7 @@ export default function ExportGabarito() {
   };
 
   const onShare = async () => {
+    if (showDownloadHint) advanceCalibrationTour();
     setBusy('share');
     try {
       const uri = await capture();
@@ -83,12 +104,14 @@ export default function ExportGabarito() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
         <Text variant="h1" weight="bold" style={styles.title}>
-          Exportar gabarito
+          {isCalibration ? 'Gabarito de calibração' : 'Exportar gabarito'}
         </Text>
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
-          Baixe a imagem para imprimir ou compartilhe para inserir em um documento de texto.
+          {isCalibration
+            ? 'Esta folha já vem marcada. Imprima e escaneie de volta para testar a câmera do seu celular antes de aplicar provas reais.'
+            : 'Baixe a imagem para imprimir ou compartilhe para inserir em um documento de texto.'}
         </Text>
         <Text variant="caption" color={colors.textMuted} style={styles.hint}>
           Ao imprimir ou inserir no documento, use a opção &quot;Ajustar à página&quot; para o
@@ -105,13 +128,22 @@ export default function ExportGabarito() {
             }}
           >
             <ViewShot ref={viewShotRef} options={{ format: 'png', quality: 1 }}>
-              <GabaritoSheet exam={exam} width={CAPTURE_WIDTH} />
+              <GabaritoSheet exam={exam} width={CAPTURE_WIDTH} answerKey={answerKey} />
             </ViewShot>
           </View>
         </View>
 
-        <PillButton title="Baixar imagem" variant="accent" onPress={onSave} disabled={busy !== null} />
-        <PillButton title="Compartilhar" variant="outline" onPress={onShare} disabled={busy !== null} />
+        <View style={[styles.saveWrap, showDownloadHint && styles.saveWrapTourSpace]}>
+          <PillButton title="Baixar imagem" variant="accent" onPress={onSave} disabled={busy !== null} />
+          <PillButton title="Compartilhar" variant="outline" onPress={onShare} disabled={busy !== null} />
+          {showDownloadHint ? (
+            <TourHint
+              text="Toque aqui para salvar a imagem"
+              onDismiss={skipCalibrationTour}
+              animationSource={require('../../../../assets/animations/tired-pencil.json')}
+            />
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -127,6 +159,16 @@ const styles = StyleSheet.create({
     paddingBottom: 140,
     gap: spacing.sm,
   },
+  saveWrap: {
+    position: 'relative',
+    gap: spacing.sm,
+  },
+  // Gives the calibration TourHint's callout (above) and skip button (below) room to render
+  // without overlapping the preview image above or the "Compartilhar" button below.
+  saveWrapTourSpace: {
+    marginTop: 60,
+    marginBottom: 56,
+  },
   title: {
     marginBottom: spacing.xs,
   },
@@ -140,6 +182,6 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: spacing.lg,
     overflow: 'hidden',
-    borderRadius: 12,
+    borderRadius: 16,
   },
 });

@@ -10,13 +10,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.andrepfdev.provazero",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FE4A4C",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -39,7 +40,15 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain"
+        }
+      ],
       [
         "expo-camera",
         {
@@ -56,10 +65,13 @@
           ]
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-status-bar",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
-      "apiBaseUrl": "https://api-gabaritos.vercel.app",
+      "apiBaseUrl": "https://api.provazero.app.br",
       "router": {},
       "eas": {
         "projectId": "3be962d1-d62c-4479-b7c5-7fee3fde9d26"

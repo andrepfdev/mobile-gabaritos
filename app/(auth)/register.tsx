@@ -14,14 +14,19 @@ export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | undefined>();
   const register = useRegister();
 
   const onSubmit = async () => {
     setError(undefined);
+    if (password !== confirmPassword) {
+      setError('As senhas digitadas são diferentes.');
+      return;
+    }
     try {
       await register.mutateAsync({ name, email, password });
-      router.replace('/(tabs)/statistics');
+      router.replace('/(tabs)/exams');
     } catch (err) {
       const apiError = err as ApiError;
       setError(apiError.issues?.[0]?.message ?? apiError.message);
@@ -44,6 +49,13 @@ export default function Register() {
         onChangeText={setPassword}
         secureTextEntry
         placeholder="Mínimo 8 caracteres"
+      />
+      <AuthTextField
+        label="Confirmar senha"
+        value={confirmPassword}
+        onChangeText={setConfirmPassword}
+        secureTextEntry
+        placeholder="Digite a senha novamente"
       />
       {error ? (
         <Text variant="caption" color={colors.danger} style={styles.error}>

@@ -4,24 +4,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
 import { AlignmentGuide } from '../../../../components/gabarito/AlignmentGuide';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
+import { useClassStore } from '../../../../store/classStore';
 import { useScanStore } from '../../../../store/scanStore';
 import { buildGabaritoLayout, optionsForCount } from '../../../../lib/gabarito/layout';
+import { analyzeGabarito } from '../../../../lib/gabarito/scan';
+
+// Temp capture files live in the OS cache dir and are never needed again once consumed by the
+// next pipeline step — deleting them here is what keeps scans from silently filling up storage.
+const deleteQuietly = (uri: string) => {
+  FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
+};
 
 export default function ScanGabarito() {
-  const { examId } = useLocalSearchParams<{ examId: string }>();
+  const { examId, studentId } = useLocalSearchParams<{ examId: string; studentId?: string }>();
   const router = useRouter();
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
-  const setPhotoUri = useScanStore((s) => s.setPhotoUri);
+  const students = useClassStore((s) => s.students);
+  const setResult = useScanStore((s) => s.setResult);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
+  const student = studentId ? students.find((s) => s.id === studentId) : undefined;
   const layout = exam ? buildGabaritoLayout(exam.questionCount, optionsForCount(exam.optionsCount)) : null;
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -38,33 +49,75 @@ export default function ScanGabarito() {
         setCodeError(null);
       } else {
         setCodeVerified(false);
-        setCodeError('Esta folha pertence a outra prova.');
+        setCodeError('Este gabarito pertence a outra prova.');
       }
     },
     [exam],
   );
 
   const onCapture = async () => {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturing || !layout) return;
     setCapturing(true);
+    // TEMPORARY profiling — wall-clock split of each phase, surfaced only in the
+    // "Diagnóstico (temporário)" debug card on the result screen. Remove once the
+    // real bottleneck in this pipeline is identified and addressed.
+    const t0 = Date.now();
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
-      if (!photo?.uri) {
-        throw new Error('A câmera não retornou uma foto.');
+      let normalizedUri: string;
+      let t1 = t0;
+      let t2 = t0;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({ quality: 1 });
+        t1 = Date.now();
+        if (!photo?.uri) {
+          throw new Error('A câmera não retornou uma foto.');
+        }
+        // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
+        // without this, Skia's raw decode can read the image sideways relative to what the
+        // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
+        // Resize for memory; keep JPEG near-lossless so ArUco modules survive re-encode.
+        // Single JPEG encode (bake EXIF + resize). loadGray reads bytes without re-encoding.
+        const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
+          compress: 1,
+          format: SaveFormat.JPEG,
+        });
+        t2 = Date.now();
+        normalizedUri = normalized.uri;
+        // The raw capture is fully superseded by the normalized copy from here on.
+        deleteQuietly(photo.uri);
+      } catch {
+        Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
+        return;
       }
-      // Re-encodes the photo, which bakes the EXIF orientation into the actual pixel buffer —
-      // without this, Skia's raw decode can read the image sideways relative to what the
-      // camera preview (and our alignment guide) showed, breaking the percentage-based sampling.
-      const normalized = await manipulateAsync(photo.uri, [{ resize: { width: 1600 } }], {
-        compress: 0.9,
-        format: SaveFormat.JPEG,
-      });
-      setPhotoUri(normalized.uri);
-      router.push(`/exams/${examId}/scan-result`);
-    } catch {
-      // Without this, a failed capture/normalize silently left the teacher stuck on the camera
-      // screen with no feedback at all — always surface something instead of failing silently.
-      Alert.alert('Não foi possível capturar a foto', 'Tente novamente.');
+
+      // Runs the full detect+warp+bubble-read pipeline once here (instead of a cheap
+      // detect-only gate followed by a second full pass on the result screen) — the same
+      // ArUco corners are known upfront from `layout`, so there's nothing left to redo later.
+      try {
+        const { answers, debug } = await analyzeGabarito(normalizedUri, layout);
+        const t3 = Date.now();
+        setResult({
+          answers,
+          debug,
+          timings: {
+            captureMs: Math.round(t1 - t0),
+            resizeMs: Math.round(t2 - t1),
+            analyzeMs: Math.round(t3 - t2),
+            totalMs: Math.round(t3 - t0),
+          },
+        });
+        router.push(
+          studentId ? `/exams/${examId}/scan-result?studentId=${studentId}` : `/exams/${examId}/scan-result`,
+        );
+      } catch {
+        Alert.alert(
+          'Não identificamos os cantos da folha',
+          'Reenquadre a folha, garanta boa iluminação e capture de novo.',
+        );
+      } finally {
+        // Consumed by analyzeGabarito above either way — never read again after this point.
+        deleteQuietly(normalizedUri);
+      }
     } finally {
       setCapturing(false);
     }
@@ -111,21 +164,36 @@ export default function ScanGabarito() {
         barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
         onBarcodeScanned={onBarcodeScanned}
       />
-      <AlignmentGuide layout={layout} />
 
       <SafeAreaView style={styles.overlay} edges={['top', 'bottom']}>
-        <Card variant="light" style={styles.tipCard}>
+        {student ? (
+          <Card variant="light" style={styles.tipCard}>
+            <Text variant="caption" weight="medium">
+              {`Lendo gabarito de: ${student.name}`}
+            </Text>
+          </Card>
+        ) : null}
+        <Card variant={codeVerified ? 'pink' : 'light'} style={styles.tipCard}>
           <Text variant="caption" weight="medium">
-            {codeError ?? (codeVerified ? `Código confirmado: ${exam.code}` : 'Alinhe a folha e aponte o QR code para a câmera')}
+            {codeError ??
+              (codeVerified
+                ? `Código: ${exam.code}. Agora alinhe os 4 marcadores por dentro da área de captura.`
+                : 'Alinhe a folha e aponte a câmera code para o QR da prova.')}
           </Text>
         </Card>
 
+        {/* Guide lives in the free band between tip + footer so it is not clipped/pushed high. */}
+        <AlignmentGuide layout={layout} fillParent active={codeVerified} />
+
         <View style={styles.footer}>
           <Text variant="caption" color={colors.white} style={styles.hint}>
-            Use boa iluminação e evite sombras sobre a folha.
+            Caneta preta ou azul. Preencher bem o círculo (aceita preenchimento parcial).
+            Enquadre os 4 marcadores dos cantos da folha, fundo claro, luz uniforme.
           </Text>
           <PillButton
-            title={capturing ? 'Capturando...' : 'Capturar'}
+            title={
+              capturing ? 'Validando marcas...' : codeVerified ? 'Capturar e ler' : 'Aguardando QR da prova'
+            }
             variant="accent"
             onPress={onCapture}
             disabled={!codeVerified || capturing}
@@ -156,15 +224,18 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    justifyContent: 'space-between',
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
   },
   tipCard: {
     alignSelf: 'center',
+    marginBottom: spacing.sm,
   },
   footer: {
     alignItems: 'center',
     gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   hint: {
     textAlign: 'center',

@@ -1,24 +1,30 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from './client';
-import { students as studentsTable } from './schema';
-
-// Not used by any screen yet — the roster-by-class feature is planned for later. Exists now so
-// that feature doesn't need its own database migration on top of this one.
+import { students as studentsTable, examResults as examResultsTable } from './schema';
 
 export type StudentRecord = { id: string; classId: string; name: string; avatarUri?: string };
 
-export async function listStudentsByClass(classId: string): Promise<StudentRecord[]> {
+export async function listAllStudents(userId: string): Promise<StudentRecord[]> {
   const rows = await db
     .select()
     .from(studentsTable)
-    .where(and(eq(studentsTable.classId, classId), isNull(studentsTable.deletedAt)));
+    .where(and(eq(studentsTable.userId, userId), isNull(studentsTable.deletedAt)));
   return rows.map((row) => ({ id: row.id, classId: row.classId, name: row.name, avatarUri: row.avatarUri ?? undefined }));
 }
 
-export async function createStudent(record: StudentRecord): Promise<void> {
+export async function listStudentsByClass(classId: string, userId: string): Promise<StudentRecord[]> {
+  const rows = await db
+    .select()
+    .from(studentsTable)
+    .where(and(eq(studentsTable.classId, classId), eq(studentsTable.userId, userId), isNull(studentsTable.deletedAt)));
+  return rows.map((row) => ({ id: row.id, classId: row.classId, name: row.name, avatarUri: row.avatarUri ?? undefined }));
+}
+
+export async function createStudent(record: StudentRecord, userId: string): Promise<void> {
   const now = new Date().toISOString();
   await db.insert(studentsTable).values({
     id: record.id,
+    userId,
     classId: record.classId,
     name: record.name,
     avatarUri: record.avatarUri ?? null,
@@ -27,6 +33,22 @@ export async function createStudent(record: StudentRecord): Promise<void> {
   });
 }
 
+export async function updateStudent(record: StudentRecord): Promise<void> {
+  await db
+    .update(studentsTable)
+    .set({
+      name: record.name,
+      avatarUri: record.avatarUri ?? null,
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(studentsTable.id, record.id));
+}
+
+/** Soft-deletes the student and hard-deletes their exam results — those have no lifecycle of their
+ *  own once the student they belong to is gone. */
 export async function softDeleteStudent(id: string): Promise<void> {
-  await db.update(studentsTable).set({ deletedAt: new Date().toISOString() }).where(eq(studentsTable.id, id));
+  db.transaction((tx) => {
+    tx.update(studentsTable).set({ deletedAt: new Date().toISOString() }).where(eq(studentsTable.id, id)).run();
+    tx.delete(examResultsTable).where(eq(examResultsTable.studentId, id)).run();
+  });
 }

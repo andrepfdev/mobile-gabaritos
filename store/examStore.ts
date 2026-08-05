@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import { getAll } from '../lib/localDb/repository';
 import { AnswerKey, Exam, STORAGE_KEYS } from '../lib/localDb/schema';
-import { mockExams } from '../lib/mockData';
+import { mockAnswerKeys, mockExams, CALIBRATION_EXAM_ID } from '../lib/mockData';
 import { generateExamCode } from '../lib/gabarito/code';
-import { ensureMigrated } from '../lib/db/client';
-import { listExams, upsertExam, softDeleteExam } from '../lib/db/examsRepository';
+import { addDays, toIsoDate } from '../lib/exam/deadline';
+import { ensureMigrated, claimOrphanedRows } from '../lib/db/client';
+import { listExams, upsertExam, softDeleteExam, countAllExams } from '../lib/db/examsRepository';
 import { listAnswerKeys, upsertAnswerKey } from '../lib/db/answerKeysRepository';
+import { ExamResultRecord, listAllExamResults, upsertExamResult } from '../lib/db/examResultsRepository';
+import { ExamClassLink, listExamClassLinks, setExamClasses } from '../lib/db/examClassesRepository';
+
+const CALIBRATION_EXAM_DUE_DAYS = 60;
 
 /** Backfills fields added after the schema shipped (`code`, `optionsCount`) for exams already saved. */
 function backfillExam(exam: Exam, sequence: number): Exam {
@@ -25,9 +30,9 @@ function backfillExam(exam: Exam, sequence: number): Exam {
  * SQLite `exams` table is still empty — after the first successful import, SQLite is the source
  * of truth and this is skipped.
  */
-async function importFromAsyncStorageIfNeeded(): Promise<void> {
+async function importFromAsyncStorageIfNeeded(userId: string): Promise<void> {
   const [existingExams, oldExams, oldAnswerKeys] = await Promise.all([
-    listExams(),
+    listExams(userId),
     getAll<Exam>(STORAGE_KEYS.exams),
     getAll<AnswerKey>(STORAGE_KEYS.answerKeys),
   ]);
@@ -37,67 +42,141 @@ async function importFromAsyncStorageIfNeeded(): Promise<void> {
   let sequence = 0;
   for (const exam of oldExams) {
     sequence += 1;
-    await upsertExam(backfillExam(exam, sequence));
+    await upsertExam(backfillExam(exam, sequence), userId);
   }
   for (const answerKey of oldAnswerKeys) {
-    await upsertAnswerKey(answerKey);
+    await upsertAnswerKey(answerKey, userId);
   }
 }
 
 type ExamStore = {
   hydrated: boolean;
+  /** userId this store's data was hydrated for — guards mutations from running before hydrate()
+   *  and lets reset()/hydrate() detect an account switch. */
+  hydratedUserId: string | null;
   exams: Exam[];
+  /** Count of all exams ever created by this user, including soft-deleted ones — used to enforce
+   *  the free plan limit (see hooks/useCanCreateExam.ts) so it can't be bypassed via delete+recreate. */
+  totalExamCount: number;
   answerKeys: AnswerKey[];
+  examResults: ExamResultRecord[];
+  examClasses: ExamClassLink[];
+  /** Set when hydrate() fails (e.g. local database couldn't open/migrate) — lets the UI show a
+   *  retry screen instead of leaving the splash screen up forever. User-facing text only, no
+   *  technical detail (see AGENTS.md). */
+  hydrateError: string | null;
 
-  hydrate: () => Promise<void>;
+  hydrate: (userId: string) => Promise<void>;
+  /** Clears in-memory state on logout — SQLite rows stay put, scoped by userId, ready for the next
+   *  hydrate() when someone logs back in. */
+  reset: () => void;
   createExam: (exam: Exam) => Promise<void>;
   updateExam: (exam: Exam) => Promise<void>;
   deleteExam: (examId: string) => Promise<void>;
   saveAnswerKey: (answerKey: AnswerKey) => Promise<void>;
+  saveExamResult: (result: ExamResultRecord) => Promise<void>;
+  linkExamClasses: (examId: string, classIds: string[]) => Promise<void>;
 
   getAnswerKey: (examId: string) => AnswerKey | undefined;
 };
 
-export const useExamStore = create<ExamStore>((set, get) => ({
+const initialState = {
   hydrated: false,
-  exams: [],
-  answerKeys: [],
+  hydratedUserId: null as string | null,
+  exams: [] as Exam[],
+  totalExamCount: 0,
+  answerKeys: [] as AnswerKey[],
+  examResults: [] as ExamResultRecord[],
+  examClasses: [] as ExamClassLink[],
+  hydrateError: null as string | null,
+};
 
-  hydrate: async () => {
-    await ensureMigrated();
-    await importFromAsyncStorageIfNeeded();
+export const useExamStore = create<ExamStore>((set, get) => ({
+  ...initialState,
 
-    let exams = await listExams();
-    const answerKeys = await listAnswerKeys();
+  hydrate: async (userId) => {
+    try {
+      await ensureMigrated();
+      claimOrphanedRows(userId);
+      await importFromAsyncStorageIfNeeded(userId);
 
-    if (exams.length === 0) {
-      for (const exam of mockExams) {
-        await upsertExam(exam);
+      let exams = await listExams(userId);
+      let answerKeys = await listAnswerKeys(userId);
+
+      if (exams.length === 0) {
+        // ids are namespaced per user: exams.id is a global PK, and the mock data uses fixed ids
+        // (e.g. CALIBRATION_EXAM_ID) that would otherwise collide — and silently reassign
+        // ownership — across different accounts sharing this device.
+        for (const exam of mockExams) {
+          // Prazo do gabarito de calibração é sempre "conta criada + N dias" — calculado aqui no
+          // seed (não fixo em mockData.ts) para valer a partir da criação de cada conta.
+          const dueDate =
+            exam.id === CALIBRATION_EXAM_ID
+              ? toIsoDate(addDays(new Date(), CALIBRATION_EXAM_DUE_DAYS))
+              : exam.dueDate;
+          await upsertExam({ ...exam, id: `${userId}:${exam.id}`, dueDate }, userId);
+        }
+        for (const answerKey of mockAnswerKeys) {
+          await upsertAnswerKey({ ...answerKey, examId: `${userId}:${answerKey.examId}` }, userId);
+        }
+        exams = await listExams(userId);
+        answerKeys = await listAnswerKeys(userId);
       }
-      exams = await listExams();
-    }
 
-    set({ exams, answerKeys, hydrated: true });
+      const examResults = await listAllExamResults(userId);
+      const examClasses = await listExamClassLinks(userId);
+
+      set({
+        exams,
+        answerKeys,
+        examResults,
+        examClasses,
+        totalExamCount: await countAllExams(userId),
+        hydrated: true,
+        hydratedUserId: userId,
+        hydrateError: null,
+      });
+    } catch {
+      set({ hydrateError: 'Não foi possível carregar suas provas. Verifique o espaço livre no aparelho e tente novamente.' });
+    }
   },
 
+  reset: () => set({ ...initialState }),
+
   createExam: async (exam) => {
-    await upsertExam(exam);
-    set({ exams: await listExams() });
+    const userId = get().hydratedUserId!;
+    await upsertExam(exam, userId);
+    set({ exams: await listExams(userId), totalExamCount: await countAllExams(userId) });
   },
 
   updateExam: async (exam) => {
-    await upsertExam(exam);
-    set({ exams: await listExams() });
+    const userId = get().hydratedUserId!;
+    await upsertExam(exam, userId);
+    set({ exams: await listExams(userId) });
   },
 
   deleteExam: async (examId) => {
+    const userId = get().hydratedUserId!;
     await softDeleteExam(examId);
-    set({ exams: await listExams() });
+    set({ exams: await listExams(userId), totalExamCount: await countAllExams(userId) });
   },
 
   saveAnswerKey: async (answerKey) => {
-    await upsertAnswerKey(answerKey);
-    set({ answerKeys: await listAnswerKeys() });
+    const userId = get().hydratedUserId!;
+    await upsertAnswerKey(answerKey, userId);
+    set({ answerKeys: await listAnswerKeys(userId) });
+  },
+
+  saveExamResult: async (result) => {
+    const userId = get().hydratedUserId!;
+    await upsertExamResult(result, userId);
+    set({ examResults: await listAllExamResults(userId) });
+  },
+
+  linkExamClasses: async (examId, classIds) => {
+    const userId = get().hydratedUserId!;
+    await setExamClasses(examId, classIds, userId);
+    set({ examClasses: await listExamClassLinks(userId) });
   },
 
   getAnswerKey: (examId) => get().answerKeys.find((key) => key.examId === examId),

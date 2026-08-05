@@ -8,28 +8,28 @@ export function optionsForCount(optionsCount: 4 | 5): string[] {
 /** A4 width in mm, used only as the reference for width-relative absolute measurements below. */
 const SHEET_WIDTH_MM = 210;
 
-const CORNER_INSET_PCT = 0.035;
-const CORNER_MARK_SIZE_PCT = 0.03;
+const CORNER_INSET_PCT = 0.04;
+/** Larger fiducials (~8–10 mm on A4-width print) improve phone detection vs keyboard/QR noise. */
+const CORNER_MARK_SIZE_PCT = 0.05;
 // All of the constants below are expressed as a fraction of the sheet's WIDTH (not height) —
 // the sheet's height is derived from actual content (header + however many rows fit), instead of
-// assuming a fixed A4 height and hoping the content matches it. This is what avoids both an
-// overlap (content taller than a fixed guess) and a big empty gap (content shorter than it).
-const HEADER_HEIGHT_W = 0.115;
-const GRID_TOP_GAP_W = 0.02;
-const ROW_HEIGHT_W = 0.082;
-// Clear gap between the last row's stripe and the bottom corner marks (bigger than the corner
-// mark's own half-size) so the two never touch/overlap regardless of rounding.
-const BOTTOM_MARGIN_W = CORNER_INSET_PCT + CORNER_MARK_SIZE_PCT;
+// assuming a fixed A4 height and hoping the content matches it.
+/** Identity block only (title / class / code / QR) — no ArUco here. */
+const HEADER_HEIGHT_W = 0.125;
+/** Clear air between header divider and the top of the OMR frame marks. */
+const HEADER_OMR_GAP_W = 0.028;
+/** Extra air so option letters above bubbles don't collide with the previous row / ArUco. */
+const GRID_TOP_GAP_W = 0.028;
+const ROW_HEIGHT_W = 0.09;
 const COLUMN_GAP_W = 0.04;
-// Just enough width for a 1-2 digit question number — the label doesn't need a big share of the row.
 const LABEL_WIDTH_RATIO = 0.09;
-// Center-to-center spacing between bubbles, as a multiple of bubble diameter.
 const BUBBLE_PITCH_FACTOR = 2.2;
-// Bubble diameter as a fraction of row height — the main lever for "bigger circles".
 const BUBBLE_HEIGHT_RATIO = 0.85;
-// Small left padding so rows don't start flush against the corner-inset margin.
 const ROW_LEFT_PADDING_RATIO = 0.02;
 const MAX_ROWS_PER_COLUMN = 25;
+/** Band reserved above the grid for the big printed column letters (A B C D E) — print-only,
+ * never sampled by the OMR reader (which only ever looks at `corners` and `bubbles`). */
+const COLUMN_LABEL_HEIGHT_W = 0.032;
 
 export type Point = { xPct: number; yPct: number };
 
@@ -47,12 +47,23 @@ export type QuestionRow = {
   band: { xPct: number; yPct: number; widthPct: number; heightPct: number };
 };
 
+/** Big printed column letter (A/B/C/D/E) above each column — print-only, not used for reading. */
+export type ColumnHeaderLabel = {
+  column: number;
+  option: string;
+  center: Point;
+};
+
 export type GabaritoLayout = {
   questionCount: number;
   options: string[];
   aspectRatio: number;
+  /** Bottom of the identity header as a fraction of sheet height (title/QR live above this). */
   headerHeightPct: number;
   cornerMarkSizePct: number;
+  /**
+   * ArUco centers framing the OMR block only (below the header). Shared by print + scanner.
+   */
   corners: {
     topLeft: Point;
     topRight: Point;
@@ -62,17 +73,20 @@ export type GabaritoLayout = {
   bubbleRadiusPct: number;
   rows: QuestionRow[];
   bubbles: BubblePosition[];
+  /** Vertical center (as a fraction of sheet height) of the printed column-letter band. */
+  columnHeaderYPct: number;
+  columnHeaders: ColumnHeaderLabel[];
 };
 
 /**
  * Pure percentage-based geometry for a gabarito sheet (0..1 relative to the sheet's own
  * width/height). Shared by the export renderer (GabaritoSheet) and the camera scanner
- * (lib/gabarito/scan.ts) so both agree on exactly where every bubble and corner marker is,
- * regardless of the pixel dimensions each one renders/captures at.
+ * so both agree on exactly where every bubble and corner marker is.
  *
- * The sheet's height (and therefore `aspectRatio`) is derived from how many rows actually fit,
- * not fixed to A4's — a short exam gets a short, tightly-cropped sheet instead of a full A4 page
- * with a lot of unused blank space at the bottom.
+ * Vertical zones:
+ *   1) Header (title, code, QR) — no fiducials
+ *   2) Gap
+ *   3) OMR frame — four ArUco marks + bubble grid inside
  */
 export function buildGabaritoLayout(questionCount: number, options: string[] = DEFAULT_OPTIONS): GabaritoLayout {
   const columns = questionCount > MAX_ROWS_PER_COLUMN ? 2 : 1;
@@ -80,34 +94,53 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
   const columnWidthW = (1 - 2 * CORNER_INSET_PCT - (columns - 1) * COLUMN_GAP_W) / columns;
   const labelWidthW = columnWidthW * LABEL_WIDTH_RATIO;
 
-  // Bubble size is driven by row height (vertical density) but capped so the tightly-pitched
-  // group of bubbles still fits within the column width even for many options / narrow columns.
   const maxDiameterFromWidthW = (columnWidthW - labelWidthW) / ((options.length - 1) * BUBBLE_PITCH_FACTOR + 1);
   const bubbleDiameterW = Math.min(ROW_HEIGHT_W * BUBBLE_HEIGHT_RATIO, maxDiameterFromWidthW);
   const bubbleRadiusW = bubbleDiameterW / 2;
   const bubblePitchW = bubbleDiameterW * BUBBLE_PITCH_FACTOR;
+  const markHalfW = CORNER_MARK_SIZE_PCT / 2;
 
-  const gridTopW = HEADER_HEIGHT_W + GRID_TOP_GAP_W;
+  // Top ArUco centers sit fully below the header so title/QR never overlap the marks.
+  const topCornerW = HEADER_HEIGHT_W + HEADER_OMR_GAP_W + markHalfW;
+  const columnHeaderTopW = topCornerW + markHalfW + GRID_TOP_GAP_W;
+  const columnHeaderCenterW = columnHeaderTopW + COLUMN_LABEL_HEIGHT_W / 2;
+  const gridTopW = columnHeaderTopW + COLUMN_LABEL_HEIGHT_W;
   const gridHeightW = rowsPerColumn * ROW_HEIGHT_W;
-  const totalHeightW = gridTopW + gridHeightW + BOTTOM_MARGIN_W;
+  const bottomCornerW = gridTopW + gridHeightW + GRID_TOP_GAP_W + markHalfW;
+  const totalHeightW = bottomCornerW + markHalfW + HEADER_OMR_GAP_W;
   const aspectRatio = 1 / totalHeightW;
 
-  // Convert every width-relative measurement above into a fraction of the *final* sheet height,
-  // matching the Point/percentage API the rest of the app already expects.
   const toYPct = (valueW: number) => valueW / totalHeightW;
+
+  // Shared by both the per-row bubbles and the column-header letters, so both always agree
+  // on exactly which x each option letter/bubble sits at within a column.
+  const optionsAreaLeftForColumn = (columnIndex: number) => {
+    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidthW + COLUMN_GAP_W);
+    const groupLeft = columnLeft + columnWidthW * ROW_LEFT_PADDING_RATIO;
+    return { columnLeft, groupLeft, optionsAreaLeft: groupLeft + labelWidthW };
+  };
+
+  const columnHeaders: ColumnHeaderLabel[] = [];
+  for (let col = 0; col < columns; col++) {
+    const { optionsAreaLeft } = optionsAreaLeftForColumn(col);
+    options.forEach((option, i) => {
+      columnHeaders.push({
+        column: col,
+        option,
+        center: {
+          xPct: optionsAreaLeft + bubbleRadiusW + i * bubblePitchW,
+          yPct: toYPct(columnHeaderCenterW),
+        },
+      });
+    });
+  }
 
   const rows: QuestionRow[] = [];
   for (let q = 1; q <= questionCount; q++) {
     const columnIndex = Math.floor((q - 1) / rowsPerColumn);
     const rowIndex = (q - 1) % rowsPerColumn;
-    const columnLeft = CORNER_INSET_PCT + columnIndex * (columnWidthW + COLUMN_GAP_W);
     const rowCenterW = gridTopW + rowIndex * ROW_HEIGHT_W + ROW_HEIGHT_W / 2;
-
-    // Left-align the number+bubbles cluster (like a real scantron sheet) instead of centering it
-    // in the column — centering left big empty margins on *both* sides once bubbles were made
-    // compact; left-aligning only leaves the (expected) leftover space on the right.
-    const groupLeft = columnLeft + columnWidthW * ROW_LEFT_PADDING_RATIO;
-    const optionsAreaLeft = groupLeft + labelWidthW;
+    const { columnLeft, groupLeft, optionsAreaLeft } = optionsAreaLeftForColumn(columnIndex);
 
     const rowOptions: BubblePosition[] = options.map((option, i) => ({
       question: q,
@@ -138,14 +171,16 @@ export function buildGabaritoLayout(questionCount: number, options: string[] = D
     headerHeightPct: toYPct(HEADER_HEIGHT_W),
     cornerMarkSizePct: CORNER_MARK_SIZE_PCT,
     corners: {
-      topLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(CORNER_INSET_PCT) },
-      topRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(CORNER_INSET_PCT) },
-      bottomLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(totalHeightW - CORNER_INSET_PCT) },
-      bottomRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(totalHeightW - CORNER_INSET_PCT) },
+      topLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(topCornerW) },
+      topRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(topCornerW) },
+      bottomLeft: { xPct: CORNER_INSET_PCT, yPct: toYPct(bottomCornerW) },
+      bottomRight: { xPct: 1 - CORNER_INSET_PCT, yPct: toYPct(bottomCornerW) },
     },
     bubbleRadiusPct: bubbleRadiusW,
     rows,
     bubbles: rows.flatMap((row) => row.options),
+    columnHeaderYPct: toYPct(columnHeaderCenterW),
+    columnHeaders,
   };
 }
 

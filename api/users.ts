@@ -23,3 +23,13 @@ export function useUpdateMe() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
   });
 }
+
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: (input: { currentPassword: string; newPassword: string }) =>
+      authedRequest<void>('/users/me/password', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+  });
+}

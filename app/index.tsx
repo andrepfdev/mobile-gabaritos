@@ -6,7 +6,7 @@ export default function Index() {
   const hasSeenOnboarding = useAuthStore((s) => s.hasSeenOnboarding);
 
   if (isAuthenticated) {
-    return <Redirect href="/(tabs)/statistics" />;
+    return <Redirect href="/(tabs)/exams" />;
   }
   if (!hasSeenOnboarding) {
     return <Redirect href="/(onboarding)/welcome" />;

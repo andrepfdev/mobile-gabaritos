@@ -8,6 +8,8 @@ import { AnswerGrid } from '../../../../components/exam/AnswerGrid';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
 import { optionsForCount } from '../../../../lib/gabarito/layout';
+import { useSubscriptionStatus } from '../../../../hooks/useSubscriptionStatus';
+import { isExamPastDue } from '../../../../lib/exam/deadline';
 
 export default function AnswerKeyScreen() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -15,12 +17,17 @@ export default function AnswerKeyScreen() {
   const exams = useExamStore((s) => s.exams);
   const answerKeys = useExamStore((s) => s.answerKeys);
   const saveAnswerKey = useExamStore((s) => s.saveAnswerKey);
+  const { hasActiveSubscription } = useSubscriptionStatus();
 
   const exam = exams.find((e) => e.id === examId);
   const existing = answerKeys.find((k) => k.examId === examId);
   const [answers, setAnswers] = useState<Record<number, string>>(existing?.answers ?? {});
 
   if (!exam) return null;
+
+  // Prazo vencido trava a edição do gabarito só para contas sem assinatura ativa — é uma medida
+  // anti-abuso do plano gratuito, não uma limitação do produto.
+  const examLocked = isExamPastDue(exam) && !hasActiveSubscription;
 
   const onChange = (index: number, value: string) => {
     setAnswers((prev) => ({ ...prev, [index]: value }));
@@ -31,7 +38,9 @@ export default function AnswerKeyScreen() {
     router.back();
   };
 
-  const allAnswered = Object.keys(answers).length === exam.questionCount;
+  const allAnswered = Array.from({ length: exam.questionCount }, (_, i) => i).every(
+    (index) => answers[index],
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -42,6 +51,11 @@ export default function AnswerKeyScreen() {
         <Text variant="body" color={colors.textMuted} style={styles.subtitle}>
           {exam.title}
         </Text>
+        {examLocked ? (
+          <Text variant="body" color={colors.textMuted} style={styles.lockedHint}>
+            O prazo dessa prova já passou, por isso não é mais possível alterar o gabarito.
+          </Text>
+        ) : null}
         <AnswerGrid
           questionCount={exam.questionCount}
           answers={answers}
@@ -49,7 +63,7 @@ export default function AnswerKeyScreen() {
           mode="input"
           options={optionsForCount(exam.optionsCount)}
         />
-        <PillButton title="Salvar gabarito" onPress={onSave} disabled={!allAnswered} />
+        <PillButton title="Salvar gabarito" onPress={onSave} disabled={!allAnswered || examLocked} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -68,6 +82,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   subtitle: {
+    marginBottom: spacing.md,
+  },
+  lockedHint: {
     marginBottom: spacing.md,
   },
 });
