@@ -7,7 +7,7 @@ import { queryClient } from '../api/queryClient';
 import { useExamStore } from './examStore';
 import { useClassStore } from './classStore';
 
-type CalibrationTourStep = 'card' | 'export' | 'done';
+type CalibrationTourStep = 'card' | 'export' | 'download' | 'done';
 
 function calibrationTourKey(userId: string): string {
   return `@provazero/calibrationTourSeen:${userId}`;
@@ -88,7 +88,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const { calibrationTourStep, user } = get();
     if (calibrationTourStep === 'card') {
       set({ calibrationTourStep: 'export' });
-    } else if (calibrationTourStep === 'export' && user) {
+    } else if (calibrationTourStep === 'export') {
+      set({ calibrationTourStep: 'download' });
+    } else if (calibrationTourStep === 'download' && user) {
       AsyncStorage.setItem(calibrationTourKey(user.id), 'true').catch(() => {});
       set({ calibrationTourStep: 'done' });
     }

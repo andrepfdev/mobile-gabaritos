@@ -61,13 +61,15 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
   },
+  // Sits a bit outside the highlighted element's own bounds so the dashed border doesn't hug it
+  // flush — a little breathing room reads much less cramped.
   ring: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: radii.lg,
+    top: -spacing.sm,
+    left: -spacing.sm,
+    right: -spacing.sm,
+    bottom: -spacing.sm,
+    borderRadius: radii.lg + spacing.sm,
     borderWidth: 2,
     borderColor: colors.coral,
     borderStyle: 'dashed',
