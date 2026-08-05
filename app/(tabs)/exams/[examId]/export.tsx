@@ -86,6 +86,7 @@ export default function ExportGabarito() {
   };
 
   const onShare = async () => {
+    if (showDownloadHint) advanceCalibrationTour();
     setBusy('share');
     try {
       const uri = await capture();
