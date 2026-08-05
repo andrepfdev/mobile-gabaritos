@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -6,9 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Text } from '../../../../components/ui/Text';
 import { Card } from '../../../../components/ui/Card';
 import { PillButton } from '../../../../components/ui/PillButton';
+import { TourHint } from '../../../../components/tour/TourHint';
 import { colors, spacing } from '../../../../theme/tokens';
 import { useExamStore } from '../../../../store/examStore';
-import { CALIBRATION_EXAM_ID } from '../../../../lib/mockData';
+import { useAuthStore } from '../../../../store/authStore';
+import { CALIBRATION_EXAM_CODE } from '../../../../lib/mockData';
 
 export default function ExamDetail() {
   const { examId } = useLocalSearchParams<{ examId: string }>();
@@ -17,11 +19,21 @@ export default function ExamDetail() {
   const answerKeys = useExamStore((s) => s.answerKeys);
   const examClasses = useExamStore((s) => s.examClasses);
   const deleteExam = useExamStore((s) => s.deleteExam);
+  const calibrationTourStep = useAuthStore((s) => s.calibrationTourStep);
+  const advanceCalibrationTour = useAuthStore((s) => s.advanceCalibrationTour);
+  const skipCalibrationTour = useAuthStore((s) => s.skipCalibrationTour);
 
   const exam = exams.find((e) => e.id === examId);
   const answerKey = answerKeys.find((k) => k.examId === examId);
-  const isCalibration = exam?.id === CALIBRATION_EXAM_ID;
+  const isCalibration = exam?.code === CALIBRATION_EXAM_CODE;
   const linkedClassCount = exam ? examClasses.filter((l) => l.examId === exam.id).length : 0;
+
+  useEffect(() => {
+    if (isCalibration && calibrationTourStep === 'card') {
+      advanceCalibrationTour();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCalibration, calibrationTourStep]);
 
   if (!exam) {
     return (
@@ -119,22 +131,36 @@ export default function ExamDetail() {
           />
         </Card>
 
-        <Card variant="cream" style={styles.card}>
-          <Text variant="h2" weight="bold">
-            {isCalibration ? 'Exportar gabarito de calibração' : 'Exportar gabarito em branco'}
-          </Text>
-          <Text variant="body" color={colors.textMuted} style={styles.cardSubtitle}>
-            {isCalibration
-              ? 'Baixe esta folha já marcada, imprima e escaneie de volta para testar a câmera do seu celular antes de aplicar provas reais.'
-              : 'Baixe uma imagem para imprimir ou inserir em um documento de texto.'}
-          </Text>
-          <PillButton
-            title="Exportar"
-            variant="outline"
-            onPress={() => router.push(`/exams/${examId}/export`)}
-            disabled={!answerKey}
-          />
-        </Card>
+        <View
+          style={[styles.exportWrap, isCalibration && calibrationTourStep === 'export' && styles.exportWrapTourSpace]}
+        >
+          <Card variant="cream" style={styles.card}>
+            <Text variant="h2" weight="bold">
+              {isCalibration ? 'Exportar gabarito de calibração' : 'Exportar gabarito em branco'}
+            </Text>
+            <Text variant="body" color={colors.textMuted} style={styles.cardSubtitle}>
+              {isCalibration
+                ? 'Baixe esta folha já marcada, imprima e escaneie de volta para testar a câmera do seu celular antes de aplicar provas reais.'
+                : 'Baixe uma imagem para imprimir ou inserir em um documento de texto.'}
+            </Text>
+            <PillButton
+              title="Exportar"
+              variant="outline"
+              onPress={() => {
+                if (calibrationTourStep === 'export') advanceCalibrationTour();
+                router.push(`/exams/${examId}/export`);
+              }}
+              disabled={!answerKey}
+            />
+          </Card>
+          {isCalibration && calibrationTourStep === 'export' ? (
+            <TourHint
+              text="Toque aqui para baixar e imprimir"
+              onDismiss={skipCalibrationTour}
+              animationSource={require('../../../../assets/animations/pencil-smart.json')}
+            />
+          ) : null}
+        </View>
 
         <Pressable onPress={onDelete} style={styles.deleteButton} hitSlop={8}>
           <Text variant="body" weight="medium" color={colors.danger}>
@@ -181,6 +207,16 @@ const styles = StyleSheet.create({
   },
   card: {
     marginBottom: spacing.md,
+  },
+  exportWrap: {
+    position: 'relative',
+  },
+  // Gives the calibration TourHint's callout (above) and skip button (below) room to render
+  // without overlapping the "Escanear gabarito" card above or the "Excluir prova" link below —
+  // the normal gaps here (just the card's own marginBottom) are too tight for both.
+  exportWrapTourSpace: {
+    marginTop: 74,
+    marginBottom: 56,
   },
   cardSubtitle: {
     marginTop: spacing.xs,

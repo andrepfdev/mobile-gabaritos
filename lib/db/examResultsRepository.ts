@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from './client';
 import { examResults as examResultsTable } from './schema';
 
@@ -16,8 +16,11 @@ function toRecordId(examId: string, studentId: string): string {
   return `${examId}:${studentId}`;
 }
 
-export async function listExamResultsByExam(examId: string): Promise<ExamResultRecord[]> {
-  const rows = await db.select().from(examResultsTable).where(eq(examResultsTable.examId, examId));
+export async function listExamResultsByExam(examId: string, userId: string): Promise<ExamResultRecord[]> {
+  const rows = await db
+    .select()
+    .from(examResultsTable)
+    .where(and(eq(examResultsTable.examId, examId), eq(examResultsTable.userId, userId)));
   return rows.map((row) => ({
     examId: row.examId,
     studentId: row.studentId,
@@ -29,8 +32,8 @@ export async function listExamResultsByExam(examId: string): Promise<ExamResultR
   }));
 }
 
-export async function listAllExamResults(): Promise<ExamResultRecord[]> {
-  const rows = await db.select().from(examResultsTable);
+export async function listAllExamResults(userId: string): Promise<ExamResultRecord[]> {
+  const rows = await db.select().from(examResultsTable).where(eq(examResultsTable.userId, userId));
   return rows.map((row) => ({
     examId: row.examId,
     studentId: row.studentId,
@@ -42,11 +45,12 @@ export async function listAllExamResults(): Promise<ExamResultRecord[]> {
   }));
 }
 
-export async function upsertExamResult(record: ExamResultRecord): Promise<void> {
+export async function upsertExamResult(record: ExamResultRecord, userId: string): Promise<void> {
   const now = new Date().toISOString();
   const id = toRecordId(record.examId, record.studentId);
   const values = {
     id,
+    userId,
     examId: record.examId,
     studentId: record.studentId,
     answers: record.answers,

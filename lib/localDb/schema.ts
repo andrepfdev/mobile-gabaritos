@@ -11,7 +11,6 @@ export type Exam = {
   createdAt: string; // ISO date-time
   priority: ExamPriority;
   status: ExamStatus;
-  students: { id: string; name: string; avatarUri?: string }[];
   /** Short human-readable code shown on the printed gabarito (e.g. "MAT006") so the teacher can visually confirm the sheet belongs to this exam. */
   code: string;
   /** Number of alternatives per question on the gabarito: A-D or A-E. */
@@ -23,10 +22,14 @@ export type AnswerKey = {
   answers: Record<number, string>; // questionIndex -> 'A'..'E'
 };
 
-// AsyncStorage keys used only by the one-time migration into SQLite (lib/db/*) — see
-// store/examStore.ts's importFromAsyncStorageIfNeeded. Not the primary storage path anymore.
 export const STORAGE_KEYS = {
+  // Used only by the one-time migration into SQLite (lib/db/*) — see
+  // store/examStore.ts's importFromAsyncStorageIfNeeded. Not the primary storage path anymore.
   exams: '@provazero/exams',
   answerKeys: '@provazero/answerKeys',
   onboardingSeen: '@provazero/onboardingSeen',
+  // Mirrors the logged-in user so authStore.hydrate() can restore `user.id` on a cold start
+  // without a network round-trip — tokens alone (api/tokenStorage.ts) aren't enough, since local
+  // data is scoped by user.id (see store/examStore.ts, store/classStore.ts).
+  currentUser: '@provazero/currentUser',
 } as const;

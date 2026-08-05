@@ -1,6 +1,10 @@
 import { AnswerKey, Exam } from './localDb/schema';
 
 export const CALIBRATION_EXAM_ID = 'exam-calibration';
+/** `code` is stable and globally unique-ish (see lib/gabarito/code.ts — generated codes never end
+ *  in "000"), unlike `id`, which gets namespaced per user on seed to avoid PK collisions between
+ *  accounts sharing the same device. Prefer this for "is this the calibration exam?" checks. */
+export const CALIBRATION_EXAM_CODE = 'CAL000';
 
 export const weekdayCorrections = [
   { label: 'Seg', value: 4 },
@@ -42,7 +46,6 @@ export const mockExams: Exam[] = [
     createdAt: '2026-07-01T10:00:00.000Z',
     priority: 'none',
     status: 'waiting',
-    students: [],
   },
 ];
 
