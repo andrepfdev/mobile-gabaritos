@@ -225,6 +225,28 @@ Saída:
   configurado) ou o EAS Build (`npx eas build --platform android`), que roda
   na nuvem e não consome recursos da máquina local.
 
+## Checklist de publicação (Google Play)
+
+Itens que dependem de conta/conteúdo do Console, não de código — reunidos
+aqui pra não se perder na hora de submeter:
+
+- **Política de privacidade**: obrigatória (o app pede câmera e tem
+  contas de usuário). Precisa de uma URL pública hospedada (ex. no site,
+  fora do app) — ainda não existe, criar antes de submeter.
+- **Conta de teste para o revisor**: como o app exige login, inclua nas
+  notas de revisão uma conta já com assinatura ativa (`AUTHORIZED`), senão
+  o revisor fica preso na tela de paywall — ver `AGENTS.md` sobre o
+  modelo de assinatura 100% externa.
+- **Formulário de Data Safety** e **classificação de conteúdo**: preenchidos
+  no próprio Console, com base em quais dados o backend de fato coleta
+  (conta/e-mail; as fotos de gabarito são processadas localmente e
+  apagadas após o escaneamento — ver limpeza automática em `scan.tsx`).
+- **Ficha da loja**: descrição curta/longa, categoria, screenshots reais
+  do app e feature graphic (1024×500) — ainda não produzidos.
+- **`eas submit`**: `eas.json` já aponta pro track `internal`; falta
+  gerar/anexar a service account do Google Play
+  (`submit.production.android.serviceAccountKeyPath`) quando ela existir.
+
 ## Notas e limitações da v1
 
 - Leitura OMR por câmera no Android depende do módulo OpenCV nativo; iOS ainda usa fallback JS / `unavailable`.
