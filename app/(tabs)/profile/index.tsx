@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAUSED: 'Pausada',
   CANCELED: 'Cancelada',
   PAST_DUE: 'Em atraso',
+  EXPIRED: 'Expirada',
 };
 
 const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
