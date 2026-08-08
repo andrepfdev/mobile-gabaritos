@@ -8,14 +8,15 @@ export type User = {
 
 export type PlanInterval = 'MONTHLY' | 'SEMIANNUAL' | 'YEARLY';
 
-export type SubscriptionStatus = 'PENDING' | 'AUTHORIZED' | 'PAUSED' | 'CANCELED' | 'PAST_DUE';
+export type SubscriptionStatus = 'PENDING' | 'AUTHORIZED' | 'PAUSED' | 'CANCELED' | 'PAST_DUE' | 'EXPIRED';
 
 export type Subscription = {
   id: string;
   userId: string;
   planId: string;
   status: SubscriptionStatus;
-  mercadoPagoPreapprovalId: string | null;
+  stripeSubscriptionId: string | null;
+  stripeCustomerId: string | null;
   startDate: string | null;
   currentPeriodEnd: string | null;
   canceledAt: string | null;
@@ -35,6 +36,7 @@ export type Plan = {
   interval: PlanInterval;
   active: boolean;
   features?: unknown;
+  stripePriceId: string | null;
 };
 
 export type PaymentStatus = 'PENDING' | 'APPROVED' | 'IN_PROCESS' | 'REJECTED' | 'REFUNDED' | 'CANCELLED';
@@ -42,7 +44,7 @@ export type PaymentStatus = 'PENDING' | 'APPROVED' | 'IN_PROCESS' | 'REJECTED' |
 export type Payment = {
   id: string;
   subscriptionId: string;
-  mercadoPagoPaymentId: string;
+  stripePaymentIntentId: string | null;
   status: PaymentStatus;
   amount?: string;
   createdAt: string;
