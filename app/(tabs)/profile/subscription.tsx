@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAUSED: 'Pausada',
   CANCELED: 'Cancelada',
   PAST_DUE: 'Pagamento em atraso',
+  EXPIRED: 'Expirada',
 };
 
 // Plain-language explanation for each status, so the teacher understands what's happening
@@ -26,6 +27,7 @@ const STATUS_DESCRIPTION: Record<string, string> = {
   PAUSED: 'Sua assinatura está pausada e não está sendo cobrada no momento.',
   CANCELED: 'Sua assinatura foi cancelada e não será renovada.',
   PAST_DUE: 'Não conseguimos confirmar seu último pagamento. Verifique seus dados de pagamento no site.',
+  EXPIRED: 'Sua assinatura venceu e não foi renovada. Verifique sua assinatura no site.',
 };
 
 const STATUS_DOT_COLOR: Record<string, string> = {
@@ -34,6 +36,7 @@ const STATUS_DOT_COLOR: Record<string, string> = {
   PAUSED: colors.tagYellow,
   CANCELED: colors.tagGray,
   PAST_DUE: colors.danger,
+  EXPIRED: colors.tagGray,
 };
 
 const PAYMENT_STATUS_LABEL: Record<string, string> = {

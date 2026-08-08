@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<string, string> = {
   PAUSED: 'Pausada',
   CANCELED: 'Cancelada',
   PAST_DUE: 'Em atraso',
+  EXPIRED: 'Expirada',
 };
 
 const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
@@ -210,7 +211,13 @@ export default function Profile() {
             {user?.activeSubscription ? (
               <StatusTag
                 label={STATUS_LABEL[user.activeSubscription.status] ?? user.activeSubscription.status}
-                dotColor={user.activeSubscription.status === 'AUTHORIZED' ? colors.success : colors.tagYellow}
+                dotColor={
+                  user.activeSubscription.status === 'AUTHORIZED'
+                    ? colors.success
+                    : user.activeSubscription.status === 'CANCELED' || user.activeSubscription.status === 'EXPIRED'
+                      ? colors.tagGray
+                      : colors.tagYellow
+                }
               />
             ) : null}
           </View>

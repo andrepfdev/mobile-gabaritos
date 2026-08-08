@@ -184,7 +184,9 @@ export default function ScanResult() {
 
         {/* TEMPORARY diagnostic block — remove once the pixel-reading pipeline is confirmed
             working end-to-end on a real device. Shows raw luminance readings (0=black..255=white)
-            so we can tell apart "sampling the wrong spot" from "Skia not reading pixels right". */}
+            so we can tell apart "sampling the wrong spot" from "Skia not reading pixels right".
+            Disabled for the Play Store release; re-enable this block if we need to debug the
+            scan pipeline again.
         {debug ? (
           <Card variant="grayLight" style={styles.debugCard}>
             <Text variant="body" weight="bold">
@@ -217,6 +219,7 @@ export default function ScanResult() {
             ))}
           </Card>
         ) : null}
+        */}
       </ScrollView>
     </SafeAreaView>
   );
